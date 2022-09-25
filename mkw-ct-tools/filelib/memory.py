@@ -7,7 +7,7 @@ import numpy as np
 class BufferOverflowError(RuntimeError):
     """
     A BufferOverflowError occurs when attempting to access or modify data
-    outside of the :class:`Buffer`'s memory block.
+    outside of the `Buffer`'s memory block.
     """
 
     def __init__(self, *args):
@@ -16,60 +16,125 @@ class BufferOverflowError(RuntimeError):
 
 class Buffer:
     """
-    If `src` is specified, and `copy` is `True`, the new buffer will be a copy
-    of `src`.
-    If `src` is specified, and `copy` is `False`, the new buffer will share the
-    memory block of `src`.
-    If `src` is not specified, an empty buffer is allocated.
+    The Buffer class is a memory manipulation utility that read and write data
+    from and to a contiguous sequence of bytes. It is similar to Java's
+    `java.nio.ByteBuffer`.
 
-    When `src` is specified, the data of the new buffer will be a subset of
-    `src` starting from `off` with a length of `size`. If `size` is 0 (the
-    default), then the length of the new buffer will be the length of `src`
-    minus `off`.
+    Each buffer has a data array and a set of properties. The length is the
+    length of the data, the position is an offset in the data, and the limit is
+    an artificial upper bound to the data. The limit is always less than or
+    equal to the length, and the position is always less than or equal to the
+    limit. A negative value is converted into a positive value the same way as
+    Python's slice notation, the limit starting from the length and the position
+    starting from the limit. Should the limit be set to a value less than the
+    position, the position will also be set to the new limit.
 
-    When `src` is not specified, the length of the new buffer is `size`, and
-    `off` is ignored.
+    Each buffer also has multiple functionalities. There are the functions which
+    alter the state of the buffer, some which read or write from or to the data,
+    and others which creates buffers.
 
-    :raises ValueError: If `src` is specified and `off` or `size` is less than
-    0, or `off` is greater than or equal to `src` length, or the sum of `off`
-    and `size` is greater than `src` length. If `src` is not specified and
-    `size` is less than or equal to 0.
+    First are the functions altering the buffer state. The `flip` function sets
+    the limit to the current position, then moves the position back to 0, the
+    start of the buffer. The `clear` function simply resets the position to 0
+    and the limit to the length.
 
-    :param src: Buffer containing the data of the new buffer
-    :type src: Buffer, optional
-    :param copy: Whether to copy or share data with `src`
-    :type copy: bool, optional
-    :param off: The offset into the data of `src`
-    :type off: int, optional
-    :param size: The size of the new buffer
-    :type size: int, optional
+    Second are the I/O functions. The `get` functions read data from the buffer
+    while the `put` functions write data to the buffer. Both aforementioned
+    functions have multiple 'flavors', a suffix indicating the type and size of
+    data to use. Some examples are `~8` which represents an 8-bit (1 byte)
+    unsigned integer and `~f` which stands for a 32-bit (4 bytes) floating point
+    number. These functions also have as an optional argument an absolute index
+    into the buffer. Should that argument be provided, the function will operate
+    at said position, and the buffer state will remain unchanged. On the other
+    hand, if it is omitted, the function will operate at the buffer's current
+    position, and the position will be incremented by the size of the data,
+    effectively 'consuming' it.
+
+    Lastly are the functions for constructing buffers. There is the constructor
+    as well as the `copy` and `slice` functions. The constructor can create
+    either an empty buffer or a buffer initialized with the contents of another,
+    while the `copy` and `slice` functions only do the latter. When constructing
+    a buffer from another, the data can be either shared or copied. Shared means
+    both the source and new buffer will use the same data array under the hood,
+    meaning any modifications to the data by one will be reflected in the other.
+    Copied simply means the new buffer will get its own data array initialized
+    with the contents of the source. Both the constructor and the `slice`
+    function can make subsets of the source's data.
+
+    In addition to the functions above, the Buffer class implements the
+    subscript operator. Given a single index, the operator acts like the
+    absolute index version of the I/O single byte (`~8`) functions. With a slice
+    notation, the operator acts like the `slice` function to create a subset
+    buffer with shared data. The step of the slice notation is not supported.
+
+    To ensure all operations occur within the bounds of the data, errors of type
+    `BufferOverflowError` are raised when trying to access outside of the
+    buffer's range. This includes attempting to set the position to a value
+    greater than the limit, to create a subset exceeding the bounds of the
+    source, and to read or write data of size greater than the remaining data in
+    the buffer.
+
+    ============================================================================
+
+    From here on is the documentation for the constructor.
+
+    The data of the constructed buffer can either be empty (all zeros) or
+    initialized from another source buffer (`src`).
+
+    When no source is given, `size` must be specified. This will be the length,
+    in bytes, of the data array of new buffer. It must be greater than or equal
+    to 0. All other arguments will be ignored.
+
+    When a source is provided, the data can either be shared or copied. This is
+    controlled by the argument `copy` and defaults to `False` (shared). When the
+    data is shared, the new buffer will share the same data array as the source,
+    meaning any modifications to one's data will be reflected on the other's.
+    When the data is copied, the new buffer will have its own data array
+    initialized with the contents of the source's.
+
+    The last two arguments are the offset (`off`) and the length (`size`). The
+    data of the new buffer will be a subset of the source's data, starting from
+    the offset and of the specified length. If the offset is `None` (the
+    default), the position of the source buffer is used. Negative values are
+    allowed for the offset, in which case it will be calculated by subtracting
+    from the source's limit. The absolute value of the offset must be less than
+    or equal to the source's limit. If the length is `None` (also the default),
+    the difference between the source's limit and the offset will be used. The
+    length must be greater than or equal to zero, and the sum of the offset and
+    the length must be less than or equal to the source's limit.
     """
 
-    def __init__(self, *, src=None, copy=False, off=0, size=0):
+    def __init__(self, *, src = None, copy = False, off: int = None, size: int = None):
         if src is None:
-            if size <= 0:
-                raise ValueError(f"size must be > 0; {size=}")
+            if size is None:
+                raise TypeError(f"at least one of the following arguments must be provided: 'src', 'size'")
+            if size < 0:
+                raise ValueError(f"size must be >= 0; {size=}")
 
             self._data = np.zeros(size, np.uint8)
 
         else:
-            if size < 0:
-                raise ValueError(f"size must be >= 0; {size=}")
-            if off < 0:
-                raise ValueError(f"off must be >= 0; {off=}")
-            if off >= len(src):
-                raise ValueError(f"off must be < src length; {off=}, {len(src)=}")
-            if off + size > len(src):
-                raise ValueError(f"off + size must be <= src length; {off+size=}, {len(src)=}")
+            if off is None:
+                off = src.pos
+            elif abs(off) > src.limit:
+                raise BufferOverflowError(f"abs(off) must be <= src limit; {abs(off)=}, {src.limit=}")
+            elif off < 0:
+                off = src.limit + off  # negative so effectively a subtraction
 
-            if size == 0:
-                size = len(src) - off
+            if size is None:
+                size = src.limit - off
+            elif size < 0:
+                raise ValueError(f"size must be >= 0; {size=}")
+
+            if off + size > src.limit:
+                raise BufferOverflowError(f"off + size must be <= src limit; {off+size=}, {src.limit=}")
 
             self._data = src._data[off:off+size]
             if copy:
                 self._data = self._data.copy()
 
         self._pos = 0
+        self._limit = len(self)
 
         self._su8 = Struct('>B')
         self._su16 = Struct('>H')
@@ -81,56 +146,131 @@ class Buffer:
 
     @property
     def data(self) -> np.ndarray:
-        """The backend numpy array"""
+        """
+        The backend data array, a numpy ndarray. Note that this is not a copy,
+        so any modifications made to this array will be reflected in the buffer.
+        """
         return self._data
 
     @property
+    def limit(self) -> int:
+        """
+        The upper bound to the data. Any operation attempting to access data
+        beyond the limit will result in a `BufferOverflowError`.
+
+        If the limit is set to a value less than the position, the position will
+        be set to the new limit.
+
+        If the limit is set to a negative value, it will be recalculated like
+        slice notation, the length of the buffer minus absolute value of the new
+        limit.
+
+        If the absolute value of the new limit is greater than the length, a
+        `BufferOverflowError` will be raised.
+        """
+        return self._limit
+
+    @limit.setter
+    def limit(self, limit: int):
+        if abs(limit) > len(self):
+            raise BufferOverflowError(f"abs(limit) must be <= the length; {abs(limit)=}, {len(self)=}")
+
+        self._limit = limit if limit >= 0 else len(self) + limit
+
+        if self._limit < self._pos:
+            self._pos = self._limit
+
+    @property
     def pos(self) -> int:
-        """Current position"""
+        """
+        The offset in the data used by relative operations.
+
+        If the position is set to a negative value, it will be recalculated like
+        slice notation, the limit minus absolute value of the new position.
+
+        If the absolute value of the new position is greater than the limit, a
+        `BufferOverflowError` will be raised.
+        """
         return self._pos
 
     @pos.setter
     def pos(self, pos: int):
-        if pos < 0 or pos > len(self):
-            raise ValueError(f"pos must be >= 0 and <= the length; {pos=}, {len(self)=}")
+        if abs(pos) > self._limit:
+            raise BufferOverflowError(f"abs(pos) must be <= the limit; {abs(pos)=}, {self.limit=}")
 
-        self._pos = pos
+        self._pos = pos if pos >= 0 else self._limit + pos
 
-    def slice(self, *, copy=False, off=0, size=0):
+    @property
+    def remaining(self) -> int:
         """
-        Create a subset of this Buffer.
+        The amount of remaining bytes in the buffer, or the limit of this buffer
+        minus the current position.
+        """
+        return self._limit - self._pos
 
-        This is a shortcut for the constructor and is the equivalent of the
+    def clear(self):
+        """
+        Set the position to 0 and the limit to the length. Note that this method
+        doesn't clear the actual data from the buffer.
+        """
+        self._pos = 0
+        self._limit = len(self)
+
+        return self
+
+    def flip(self):
+        """
+        Set the limit to the current position, then set the position to 0. This
+        is usually called after writing data to prepare the buffer to be read.
+        """
+        self._limit = self._pos
+        self._pos = 0
+
+        return self
+
+    def slice(self, *, copy = False, off: int = None, size: int = None):
+        """
+        Create a subset of this buffer.
+
+        This is a shortcut for the constructor and is equivalent to the
         following:
 
-            buf.slice(copy=c, off=o, size=s) # is equivalent to
+        ```
+            buf.slice(copy=c, off=o, size=s)  # is equivalent to
             Buffer(src=buf, copy=c, off=o, size=s)
-
-        :raises ValueError: If `off` or `size` is less than 0, or `off` is
-        greater than or equal to the length of this buffer, or the sum of `off`
-        and `size` is greater than the length of this buffer.
-
-        :param copy: Whether to copy or share data with this buffer
-        :type copy: bool, optional
-        :param off: The offset into the data of this buffer
-        :type off: int, optional
-        :param size: The size of the new buffer
-        :type size: int, optional
-        :rtype: Buffer
+        ```
         """
         return Buffer(src=self, copy=copy, off=off, size=size)
 
+    def copy(self, *, off: int = None, size: int = None):
+        """
+        Create a copy of this buffer.
+
+        This is a shortcut for the constructor and is equivalent to the
+        following:
+
+        ```
+            buf.copy(off=o, size=s)  # is equivalent to
+            Buffer(src=buf, copy=True, off=o, size=s)
+        ```
+        """
+        return Buffer(src=self, copy=True, off=off, size=size)
+
     def _put(self, strct, size, data, pos):
         if pos is None:
-            if self._pos + size > len(self):
-                raise BufferOverflowError()
+            if self.remaining < size:
+                raise BufferOverflowError(f"not enough bytes left to write data; {self.remaining=} < {size}")
 
             strct.pack_into(self._data, self._pos, data)
             self._pos += size
 
         else:
-            if pos < 0 or pos + size > len(self):
-                raise BufferOverflowError()
+            if abs(pos) > self._limit:
+                raise BufferOverflowError(f"abs(pos) must be <= the limit; {abs(pos)=}, {self.limit=}")
+            if pos < 0:
+                pos = self._limit + pos
+            if pos + size > self._limit:
+                raise BufferOverflowError(f"attempted to write past limit; pos ({pos}) + {size} > limit ({self._limit})")
 
             strct.pack_into(self._data, pos, data)
 
@@ -138,84 +278,68 @@ class Buffer:
 
     def put8(self, data: np.uint8, *, pos: int = None):
         """
-        Put a single byte in the buffer.
+        Put a single byte in the buffer at the current position and increment
+        the position by 1. If there is less than 1 byte remaining in the buffer,
+        a `BufferOverflowError` is raised.
 
-        If `pos` is specified, put `data` at index `pos` in the buffer.
-        If `pos` is not specified, put `data` at the current position and
-        increment the current position by 1.
-
-        :raises BufferOverflowError: If `pos` is specified and is less than 0 or
-        greater than or equal to the buffer length. If `pos` is not specified
-        and the current position is equal to the buffer length.
-
-        :param data: The byte to put in the buffer
-        :type data: np.uint8
-        :param pos: The position in the buffer, or None to use current position
-        :type pos: int, optional
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, or `pos` plus 1 is greater than the limit, a
+        `BufferOverflowError` is raised.
         """
         return self._put(self._su8, 1, data, pos)
 
     def put16(self, data: np.uint16, pos: int = None):
         """
-        Put a single short (2 bytes) in the buffer.
+        Put a single short (2 bytes) in the buffer at the current position and
+        increment the position by 2. If there are less than 2 bytes remaining in
+        the buffer, a `BufferOverflowError` is raised.
 
-        If `pos` is specified, put `data` at index `pos` in the buffer.
-        If `pos` is not specified, put `data` at the current position and
-        increment the current position by 2.
-
-        :raises BufferOverflowError: If `pos` is specified and is less than 0 or
-        greater than the buffer length plus 2. If `pos` is not specified
-        and the current position is greater than the buffer length plus 2.
-
-        :param data: The short to put in the buffer
-        :type data: np.uint16
-        :param pos: The position in the buffer, or None to use current position
-        :type pos: int, optional
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus 2 is greater than the limit, or `pos`
+        is less than 0 and greater than -2, a `BufferOverflowError` is raised.
         """
         return self._put(self._su16, 2, data, pos)
 
     def put32(self, data: np.uint32, pos: int = None):
         """
-        Put a single integer (4 bytes) in the buffer.
+        Put a single integer (4 bytes) in the buffer at the current position and
+        increment the position by 4. If there are less than 4 bytes remaining in
+        the buffer, a `BufferOverflowError` is raised.
 
-        If `pos` is specified, put `data` at index `pos` in the buffer.
-        If `pos` is not specified, put `data` at the current position and
-        increment the current position by 4.
-
-        :raises BufferOverflowError: If `pos` is specified and is less than 0 or
-        greater than the buffer length plus 4. If `pos` is not specified
-        and the current position is greater than the buffer length plus 4.
-
-        :param data: The integer to put in the buffer
-        :type data: np.uint32
-        :param pos: The position in the buffer, or None to use current position
-        :type pos: int, optional
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus 4 is greater than the limit, or `pos`
+        is less than 0 and greater than -4, a `BufferOverflowError` is raised.
         """
         return self._put(self._su32, 4, data, pos)
 
     def putf(self, data: np.float32, pos: int = None):
         """
-        Put a single float (4 bytes) in the buffer.
+        Put a single float (4 bytes) in the buffer at the current position and
+        increment the position by 4. If there are less than 4 bytes remaining in
+        the buffer, a `BufferOverflowError` is raised.
 
-        If `pos` is specified, put `data` at index `pos` in the buffer.
-        If `pos` is not specified, put `data` at the current position and
-        increment the current position by 4.
-
-        :raises BufferOverflowError: If `pos` is specified and is less than 0 or
-        greater than the buffer length plus 4. If `pos` is not specified
-        and the current position is greater than the buffer length plus 4.
-
-        :param data: The float to put in the buffer
-        :type data: np.float32
-        :param pos: The position in the buffer, or None to use current position
-        :type pos: int, optional
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus 4 is greater than the limit, or `pos`
+        is less than 0 and greater than -4, a `BufferOverflowError` is raised.
         """
         return self._put(self._sf32, 4, data, pos)
 
     def _get(self, strct, size, pos):
         if pos is None:
-            if self._pos + size > len(self):
-                raise BufferOverflowError()
+            if self.remaining < size:
+                raise BufferOverflowError(f"not enough bytes left to read data; {self.remaining=} < {size}")
 
             retval = strct.unpack_from(self._data, self._pos)[0]
             self._pos += size
@@ -223,79 +347,71 @@ class Buffer:
             return retval
 
         else:
-            if pos < 0 or pos + size > len(self):
-                raise BufferOverflowError()
+            if abs(pos) > self._limit:
+                raise BufferOverflowError(f"abs(pos) must be <= the limit; {abs(pos)=}, {self.limit=}")
+            if pos < 0:
+                pos = self._limit + pos
+            if pos + size > self._limit:
+                raise BufferOverflowError(f"attempted to write past limit; pos ({pos}) + {size} > limit ({self._limit})")
 
             return strct.unpack_from(self._data, pos)[0]
 
     def get8(self, pos: int = None) -> np.uint8:
         """
-        Get a single byte from the buffer.
+        Get a single byte from the buffer from the current position and
+        increment the position by 1. The there is less than 1 byte remaining in
+        the buffer, a `BufferOverflowError` is raised.
 
-        If `pos` is specified, return the byte at index `pos` from the buffer.
-        If `pos` is not specified, return the byte at the current position and
-        increment the current position by 1.
-
-        :raises BufferOverflowError: If `pos` is specified and is less than 0 or
-        greater than or equal to the buffer length. If `pos` is not specified
-        and the current position is equal to the buffer length.
-
-        :param pos: The position in the buffer, or None to use current position
-        :type pos: int, optional
-        :rtype: np.uint8
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, or `pos` plus 1 is greater than the limit, a
+        `BufferOverflowError` is raised.
         """
         return self._get(self._su8, 1, pos)
 
     def get16(self, pos: int = None) -> np.uint16:
         """
-        Get a single short (2 bytes) from the buffer.
+        Get a single short (2 bytes) from the buffer from the current position
+        and increment the position by 2. The there are less than 2 bytes
+        remaining in the buffer, a `BufferOverflowError` is raised.
 
-        If `pos` is specified, return the short at index `pos` from the buffer.
-        If `pos` is not specified, return the short at the current position and
-        increment the current position by 2.
-
-        :raises BufferOverflowError: If `pos` is specified and is less than 0 or
-        greater than or equal to the buffer length. If `pos` is not specified
-        and the current position is equal to the buffer length.
-
-        :param pos: The position in the buffer, or None to use current position
-        :type pos: int, optional
-        :rtype: np.uint16
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus 2 is greater than the limit, or `pos`
+        is less than 0 and greater than -2, a `BufferOverflowError` is raised.
         """
         return self._get(self._su16, 2, pos)
 
     def get32(self, pos: int = None) -> np.uint32:
         """
-        Get a single integer (4 bytes) from the buffer.
+        Get a single integer (4 bytes) from the buffer from the current position
+        and increment the position by 4. The there are less than 4 bytes
+        remaining in the buffer, a `BufferOverflowError` is raised.
 
-        If `pos` is specified, return the integer at index `pos` from the buffer.
-        If `pos` is not specified, return the integer at the current position
-        and increment the current position by 4.
-
-        :raises BufferOverflowError: If `pos` is specified and is less than 0 or
-        greater than or equal to the buffer length. If `pos` is not specified
-        and the current position is equal to the buffer length.
-
-        :param pos: The position in the buffer, or None to use current position
-        :type pos: int, optional
-        :rtype: np.uint32
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus 4 is greater than the limit, or `pos`
+        is less than 0 and greater than -4, a `BufferOverflowError` is raised.
         """
         return self._get(self._su32, 4, pos)
 
     def getf(self, pos: int = None) -> np.float32:
         """
-        Get a single float (4 bytes) from the buffer.
+        Get a single float (4 bytes) from the buffer from the current position
+        and increment the position by 4. The there are less than 4 bytes
+        remaining in the buffer, a `BufferOverflowError` is raised.
 
-        If `pos` is specified, return the float at index `pos` from the buffer.
-        If `pos` is not specified, return the float at the current position and
-        increment the current position by 4.
-
-        :raises BufferOverflowError: If `pos` is specified and is less than 0 or
-        greater than or equal to the buffer length. If `pos` is not specified
-        and the current position is equal to the buffer length.
-
-        :param pos: The position in the buffer, or None to use current position
-        :type pos: int, optional
-        :rtype: np.float32
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus 4 is greater than the limit, or `pos`
+        is less than 0 and greater than -4, a `BufferOverflowError` is raised.
         """
         return self._get(self._sf32, 4, pos)
