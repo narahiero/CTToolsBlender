@@ -258,19 +258,13 @@ class Buffer:
 
     def _put(self, strct, size, data, pos):
         if pos is None:
-            if self.remaining < size:
-                raise BufferOverflowError(f"not enough bytes left to write data; {self.remaining=} < {size}")
+            self._checkEnoughRemaining(size, True)
 
             strct.pack_into(self._data, self._pos, data)
             self._pos += size
 
         else:
-            if abs(pos) > self._limit:
-                raise BufferOverflowError(f"abs(pos) must be <= the limit; {abs(pos)=}, {self.limit=}")
-            if pos < 0:
-                pos = self._limit + pos
-            if pos + size > self._limit:
-                raise BufferOverflowError(f"attempted to write past limit; pos ({pos}) + {size} > limit ({self._limit})")
+            pos = self._calcAbsolutePosAndCheck(pos, size, True)
 
             strct.pack_into(self._data, pos, data)
 
@@ -336,10 +330,63 @@ class Buffer:
         """
         return self._put(self._sf32, 4, data, pos)
 
+    def putv(self, data, pos: int = None):
+        """
+        Put an array of bytes in the buffer at the current position and
+        increment the position by the length of the array. The data can be of
+        any type as long as it is subscriptable by index, its length can be
+        queried, and the returned values are integers between 0 and 255. If
+        there are less bytes remaining in the buffer than the length of the
+        array, a `BufferOverflowError` is raised.
+
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus the length of the array is greater
+        than the limit, or `pos` is less than 0 and its absolute value is
+        greater than the length of the array, a `BufferOverflowError` is raised.
+        """
+        if pos is None:
+            self._checkEnoughRemaining(len(data), True)
+
+            pos = self._pos
+            self._pos += len(data)
+
+        else:
+            pos = self._calcAbsolutePosAndCheck(pos, len(data), True)
+
+        for i in range(len(data)):
+            self._data[pos+i] = data[i]
+
+        return self
+
+    def puts(self, data: str, nt = False, pos: int = None):
+        """
+        Put the `str` in the buffer at the current position and increment the
+        position by the length of the string. The string will be converted to a
+        sequence of ASCII codes using `encode('ascii')`. If `nt` is `True`, the
+        null character '`\\0`' will be appended to the string, and the data
+        length will thus be incremented by 1. If there are less bytes remaining
+        in the buffer than the length of the data, a `BufferOverflowError` is
+        raised.
+
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus the length of the data is greater
+        than the limit, or `pos` is less than 0 and its absolute value is
+        greater than the length of the data, a `BufferOverflowError` is raised.
+        """
+        if nt:
+            data = data + '\0'
+
+        return self.putv(data.encode('ascii'), pos=pos)
+
     def _get(self, strct, size, pos):
         if pos is None:
-            if self.remaining < size:
-                raise BufferOverflowError(f"not enough bytes left to read data; {self.remaining=} < {size}")
+            self._checkEnoughRemaining(size, False)
 
             retval = strct.unpack_from(self._data, self._pos)[0]
             self._pos += size
@@ -347,12 +394,7 @@ class Buffer:
             return retval
 
         else:
-            if abs(pos) > self._limit:
-                raise BufferOverflowError(f"abs(pos) must be <= the limit; {abs(pos)=}, {self.limit=}")
-            if pos < 0:
-                pos = self._limit + pos
-            if pos + size > self._limit:
-                raise BufferOverflowError(f"attempted to write past limit; pos ({pos}) + {size} > limit ({self._limit})")
+            pos = self._calcAbsolutePosAndCheck(pos, size, False)
 
             return strct.unpack_from(self._data, pos)[0]
 
@@ -415,3 +457,119 @@ class Buffer:
         is less than 0 and greater than -4, a `BufferOverflowError` is raised.
         """
         return self._get(self._sf32, 4, pos)
+
+    def getv(self, size: int = None, pos: int = None) -> bytearray:
+        """
+        Get get the next `size` bytes from the buffer at the current position
+        and increment the position by `size`. If there are less than `size`
+        bytes remaining in the buffer, a `BufferOverflowError` is raised.
+
+        If `size` is not provided, then the difference between the limit and the
+        position is used.
+
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus `size` is greater than the limit, or
+        `pos` is less than 0 and its absolute value is greater than `size`, a
+        `BufferOverflowError` is raised.
+        """
+        if pos is None:
+            if size is None:
+                size = self.remaining
+            else:
+                self._checkEnoughRemaining(size, False)
+
+            pos = self._pos
+            self._pos += size
+
+        else:
+            pos = self._calcAbsolutePosAndCheck(pos, size, False)
+            if size is None:
+                size = self._limit - pos
+
+        return bytearray(self._data[pos:pos+size])
+
+    def gets(self, size: int = None, nt = False, pos: int = None) -> str:
+        """
+        Get a string from the buffer at the current position and increment the
+        position by the length of the string. The data is interpreted as a
+        sequence of ASCII codes.
+
+        If `size` is provided, the next `size` bytes are used to construct a
+        string. If `nt` is True, an additional byte is read, and a `ValueError`
+        is raised if it is not the null character '`\\0`'. The null character
+        will not be appended to the returned string. If there are less bytes
+        remaining in the buffer than the length of the string, a
+        `BufferOverflowError` is raised.
+
+        If `size` is not provided and `nt` is `True`, the string is constructed
+        from the position until a null character is encountered. The null
+        character will not be appended to the string. If no null character is
+        found before reaching the end of the buffer, a `BufferOverflowError` is
+        raised.
+
+        If `size` is not provided and `nt` is `False`, then the string is
+        constructed from the remaining data.
+
+        If the optional argument `pos` is provided, then that value is used as
+        the position and the buffer's position is left unchanged. If `pos` is a
+        negative value, it will be recalculated like slice notation, the limit
+        minus the absolute value of `pos`. If the absolute value of `pos` is
+        greater than the limit, `pos` plus `size` is greater than the limit, or
+        `pos` is less than 0 and its absolute value is greater than `size`, a
+        `BufferOverflowError` is raised.
+        """
+        if nt:
+            if size is None:
+                if pos is None:
+                    start = self._pos
+                else:
+                    start = self._calcAbsolutePosAndCheck(pos, None, False)
+
+                end = start
+                while True:
+                    if end == self._limit:
+                        raise BufferOverflowError("reached end of buffer before null character")
+
+                    if self._data[end] == 0:
+                        break
+
+                    end += 1
+
+                size = end - start + 1
+
+            else:
+                size += 1
+
+                if pos is None:
+                    self._checkEnoughRemaining(size, False)
+                    start = self._pos
+                else:
+                    start = self._calcAbsolutePosAndCheck(pos, size, False)
+
+                tail = self._data[start+size-1]
+                if tail != 0:
+                    raise ValueError(f"string does not end with a null character; got {tail:#x}")
+
+        data = self.getv(size=size, pos=pos)
+        if nt:
+            data = data[:-1]
+
+        return data.decode('ascii')
+
+    def _checkEnoughRemaining(self, size, isinput):
+        if self.remaining < size:
+            act = "write" if isinput else "read"
+            raise BufferOverflowError(f"not enough bytes left to {act} data; {self.remaining=} < {size}")
+
+    def _calcAbsolutePosAndCheck(self, pos, size, isinput):
+        if abs(pos) > self._limit:
+            raise BufferOverflowError(f"abs(pos) must be <= the limit; {abs(pos)=}, {self.limit=}")
+        if pos < 0:
+            pos = self._limit + pos
+        if size is not None and pos + size > self._limit:
+            act = "write" if isinput else "read"
+            raise BufferOverflowError(f"attempted to {act} past limit; pos ({pos}) + {size} > limit ({self._limit})")
+        return pos
