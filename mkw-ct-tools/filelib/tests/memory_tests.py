@@ -516,6 +516,11 @@ class TestBufferPutMethods(unittest.TestCase):
         self.assertEqual(buf.pos, 9)
         self.assertTrue(np.array_equal(buf.data, [0xFF, 0xFE, 0xEF, 0xEE, 0xED, 0xEC, 0xDF, 0xDE, 0xDD, 0, 0x0A, 0x0B, 0x0C, 0x0D, 0, 0]))
 
+        buf.pos = 1
+        buf.putv(buf.data[:7])
+        self.assertEqual(buf.pos, 8)
+        self.assertTrue(np.array_equal(buf.data, [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xDD, 0, 0x0A, 0x0B, 0x0C, 0x0D, 0, 0]))
+
     def test_putv_errors(self):
         for size in range(16):
             buf = Buffer(size=size)
