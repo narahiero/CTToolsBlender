@@ -12,23 +12,25 @@ bl_info = {
 
 if 'bpy' in locals():
     import importlib
-    importlib.reload(utils)
+    importlib.reload(track_info)
 
 else:
-    from . import utils
+    from . import track_info
 
 
 import bpy
 
 
 classes = (
-    utils.devtools.MKWCTT_dev_settings,
-    utils.devtools.MKWCTT_OT_reload_addon,
+    track_info.SCENE_PG_mkwctt_race_settings,
+    track_info.SCENE_PT_mkwctt_race_settings,
 )
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+
+    bpy.types.Scene.mkwctt_race_settings = bpy.props.PointerProperty(type=track_info.SCENE_PG_mkwctt_race_settings)
 
 def unregister():
     for cls in reversed(classes):
