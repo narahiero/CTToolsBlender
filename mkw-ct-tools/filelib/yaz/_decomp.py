@@ -1,5 +1,4 @@
 
-from .. import utils
 from ..memory import Buffer
 
 from . import YazError

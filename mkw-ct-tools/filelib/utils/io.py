@@ -18,4 +18,5 @@ def write_file(path, buf: Buffer):
     Write the contents of the buffer to a file at the specified path.
     """
     with open(path, 'wb') as file:
-        file.write(buf.data[:buf.limit])
+        file.write(buf.data[buf.pos:buf.limit])
+    buf.pos = buf.limit

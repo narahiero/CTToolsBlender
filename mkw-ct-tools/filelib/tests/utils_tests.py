@@ -14,7 +14,7 @@ class IOTests(unittest.TestCase):
 
     def test_read_file(self):
         data = utils.io.read_file(data_file_path('data.bin'))
-        self.assertTrue(np.array_equal(data.data, [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xFF, 0x7F, 0x3F, 0x1F, 0x0F, 0x07, 0x03, 0x01]))
+        self.assertTrue(np.array_equal(data.getv(), [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0xFF, 0x7F, 0x3F, 0x1F, 0x0F, 0x07, 0x03, 0x01]))
 
         data = utils.io.read_file(data_file_path('data.txt'))
         self.assertEqual(data.gets(), "This is some text.")
@@ -29,7 +29,7 @@ class IOTests(unittest.TestCase):
         self.assertTrue(os.path.isfile(outpath))
 
         buf = utils.io.read_file(outpath)
-        self.assertTrue(np.array_equal(buf.data, data))
+        self.assertTrue(np.array_equal(buf.getv(), data))
 
         os.remove(outpath)
 

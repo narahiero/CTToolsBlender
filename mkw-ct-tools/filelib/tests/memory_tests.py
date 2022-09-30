@@ -900,6 +900,3 @@ class TestBufferGetMethods(unittest.TestCase):
                 with self.assertRaises(BufferOverflowError):
                     buf.gets(nt=True)
 
-
-if __name__ == '__main__':
-    unittest.main()
