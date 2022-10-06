@@ -1,0 +1,14 @@
+//////////////////////////////////////////////////
+//  Copyright (c) 2020 Nara Hiero
+//
+// This file is licensed under GPLv3+
+// Refer to the `License.txt` file included.
+//////////////////////////////////////////////////
+
+#pragma once
+
+#define CT_LIB_CMAKE_VERSION_MAJOR @CTLib_VERSION_MAJOR@
+#define CT_LIB_CMAKE_VERSION_MINOR @CTLib_VERSION_MINOR@
+#define CT_LIB_CMAKE_VERSION_PATCH @CTLib_VERSION_PATCH@
+
+#define CT_LIB_TESTS_DATA_DIR "@CT_LIB_TESTS_DATA_DIR@"

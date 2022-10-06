@@ -1,0 +1,2 @@
+# Exclude external dependencies from language statistics
+Deps/** linguist-vendored
