@@ -12,9 +12,19 @@ bl_info = {
 
 if 'bpy' in locals():
     import importlib
+    importlib.reload(collection_settings)
+    importlib.reload(collision_settings)
+    importlib.reload(export)
+    importlib.reload(export_info)
+    importlib.reload(model_settings)
     importlib.reload(track_info)
 
 else:
+    from . import collection_settings
+    from . import collision_settings
+    from . import export
+    from . import export_info
+    from . import model_settings
     from . import track_info
 
 
@@ -22,14 +32,33 @@ import bpy
 
 
 classes = (
+    export_info.SCENE_PG_mkwctt_export_info,
+    export_info.SCENE_OT_mkwctt_export,
+    export_info.SCENE_PT_mkwctt_export_info,
+
     track_info.SCENE_PG_mkwctt_race_settings,
     track_info.SCENE_PT_mkwctt_race_settings,
+
+    collection_settings.COLLECTION_PG_mkwctt_collection_settings,
+    collection_settings.COLLECTION_PT_mkwctt_collection_settings,
+
+    model_settings.OBJECT_PG_mkwctt_model_settings,
+    model_settings.OBJECT_PT_mkwctt_model_settings,
+
+    collision_settings.OBJECT_PG_mkwctt_collision_settings,
+    collision_settings.OBJECT_PT_mkwctt_collision_settings,
 )
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
+    bpy.types.Collection.mkwctt_collection_settings = bpy.props.PointerProperty(type=collection_settings.COLLECTION_PG_mkwctt_collection_settings)
+
+    bpy.types.Object.mkwctt_collision_settings = bpy.props.PointerProperty(type=collision_settings.OBJECT_PG_mkwctt_collision_settings)
+    bpy.types.Object.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.OBJECT_PG_mkwctt_model_settings)
+
+    bpy.types.Scene.mkwctt_export_info = bpy.props.PointerProperty(type=export_info.SCENE_PG_mkwctt_export_info)
     bpy.types.Scene.mkwctt_race_settings = bpy.props.PointerProperty(type=track_info.SCENE_PG_mkwctt_race_settings)
 
 def unregister():

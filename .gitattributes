@@ -1,0 +1,2 @@
+# Exclude CT Lib from language analytics
+szs_builder/CTLib/**
