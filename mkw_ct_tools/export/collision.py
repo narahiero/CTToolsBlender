@@ -16,9 +16,9 @@ class CollisionOutputInfo:
     flags: list = field(default_factory=list)
 
 
-def calc_kcl_flag(obj: bpy.types.Object, mat_idx = None):
+def calc_kcl_flag(obj: bpy.types.Object, mat_idx):
     collision_settings = obj.mkwctt_collision_settings
-    if mat_idx is not None and len(obj.material_slots) > 0:
+    if len(obj.material_slots) > 0:
         mat_collision_settings = obj.material_slots[mat_idx].material.mkwctt_collision_settings
         if mat_collision_settings.enable:
             collision_settings = mat_collision_settings
