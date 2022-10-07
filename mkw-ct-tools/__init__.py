@@ -47,6 +47,8 @@ classes = (
 
     collision_settings.OBJECT_PG_mkwctt_collision_settings,
     collision_settings.OBJECT_PT_mkwctt_collision_settings,
+    collision_settings.MATERIAL_PG_mkwctt_collision_settings,
+    collision_settings.MATERIAL_PT_mkwctt_collision_settings,
 )
 
 def register():
@@ -54,6 +56,8 @@ def register():
         bpy.utils.register_class(cls)
 
     bpy.types.Collection.mkwctt_collection_settings = bpy.props.PointerProperty(type=collection_settings.COLLECTION_PG_mkwctt_collection_settings)
+
+    bpy.types.Material.mkwctt_collision_settings = bpy.props.PointerProperty(type=collision_settings.MATERIAL_PG_mkwctt_collision_settings)
 
     bpy.types.Object.mkwctt_collision_settings = bpy.props.PointerProperty(type=collision_settings.OBJECT_PG_mkwctt_collision_settings)
     bpy.types.Object.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.OBJECT_PG_mkwctt_model_settings)

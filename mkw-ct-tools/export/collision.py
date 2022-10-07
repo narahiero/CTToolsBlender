@@ -8,23 +8,33 @@ from .buffer import Buffer, V3F_ORDER
 
 
 @dataclass
-class ObjectCollisionOutputInfo:
-    off: int = 0
-    size: int = 0
-
-    obj: bpy.types.Object = None
-    count: int = 0
-
-
-@dataclass
 class CollisionOutputInfo:
     size: int = 0
 
-    objs: list = field(default_factory=list)
     face_count: int = 0
+    verts: list = field(default_factory=list)
+    flags: list = field(default_factory=list)
 
 
-def collect_objects(collection: bpy.types.Collection, info: CollisionOutputInfo):
+def calc_kcl_flag(obj: bpy.types.Object, mat_idx = None):
+    collision_settings = obj.mkwctt_collision_settings
+    if mat_idx is not None and len(obj.material_slots) > 0:
+        mat_collision_settings = obj.material_slots[mat_idx].material.mkwctt_collision_settings
+        if mat_collision_settings.enable:
+            collision_settings = mat_collision_settings
+
+    kclt = utils.get_enum_number(collision_settings, 'kcl_type')
+    if kclt == 0xFF:  # 'none'
+        return None
+
+    kclv = collision_settings.kcl_variant
+    kcltr = 1 if collision_settings.kcl_trickable else 0
+    kclnd = 1 if collision_settings.kcl_non_drivable else 0
+    kclsw = 1 if collision_settings.kcl_soft_wall else 0
+
+    return (kclsw << 15) | (kclnd << 14) | (kcltr << 13) | (kclv << 5) | kclt
+
+def collect_objects(collection: bpy.types.Collection, scale, info: CollisionOutputInfo):
     collection_settings = collection.mkwctt_collection_settings
     if not collection_settings.has_collision:
         return
@@ -34,68 +44,41 @@ def collect_objects(collection: bpy.types.Collection, info: CollisionOutputInfo)
             continue
 
         collision_settings = obj.mkwctt_collision_settings
-        if not collision_settings.enable or collision_settings.kcl_type == 'none':
+        if not collision_settings.enable:
             continue
 
-        obj_info = ObjectCollisionOutputInfo()
-        obj_info.obj = obj
-
         mesh = obj.to_mesh()
+        mesh.transform(obj.matrix_world)
         mesh.calc_loop_triangles()
-        obj_info.count = len(mesh.loop_triangles)
-        info.face_count += obj_info.count
+        for tri in mesh.loop_triangles:
+            kcl_flag = calc_kcl_flag(obj, tri.material_index)
+            if kcl_flag is None:
+                continue
 
-        obj_info.off = info.size
-        obj_info.size = 0x08 + obj_info.count * 0x24
+            for vert in tri.vertices:
+                info.verts.append(mesh.vertices[vert].co * scale)
 
-        info.size += obj_info.size
-        info.objs.append(obj_info)
+            info.flags.append(kcl_flag)
+
+            info.face_count += 1
 
     for coll in collection.children:
-        collect_objects(coll, info)
+        collect_objects(coll, scale, info)
 
 def get_output_info(context):
     info = CollisionOutputInfo()
 
-    collect_objects(context.scene.collection, info)
-
-    header_size = 0x08 + len(info.objs) * 0x04
-    info.size += header_size
-
-    for obj_info in info.objs:
-        obj_info.off += header_size
+    collect_objects(context.scene.collection, context.scene.mkwctt_export_info.scale, info)
+    info.size = 0x04 + info.face_count * 0x26
 
     return info
 
 
-def write_object(obj_info: ObjectCollisionOutputInfo, scale, out: Buffer):
-    out.put32(obj_info.count)
-
-    obj = obj_info.obj
-    collision_settings = obj.mkwctt_collision_settings
-    kclt = utils.get_enum_number(collision_settings, 'kcl_type')
-    kclv = collision_settings.kcl_variant
-    kcltr = 1 if collision_settings.kcl_trickable else 0
-    kclnd = 1 if collision_settings.kcl_non_drivable else 0
-    kclsw = 1 if collision_settings.kcl_soft_wall else 0
-    kcl_flag = (kclsw << 15) | (kclnd << 14) | (kcltr << 13) | (kclv << 5) | kclt
-    out.put16(kcl_flag)
-    out.put16(0)  # padding
-
-    mesh = obj.to_mesh()
-    mesh.transform(obj.matrix_world)
-    mesh.calc_loop_triangles()
-    for tri in mesh.loop_triangles:
-        for vertex in tri.vertices:
-            out.putv(mesh.vertices[vertex].co * scale, order=V3F_ORDER)
-
 def export_collision(context, info: CollisionOutputInfo, out: Buffer):
-    export_info = context.scene.mkwctt_export_info
-
-    count = len(info.objs)
-    out.put32(count)
     out.put32(info.face_count)
 
-    for obj_info in info.objs:
-        out.put32(obj_info.off)
-        write_object(obj_info, export_info.scale, out.slice(off=obj_info.off, size=obj_info.size))
+    for vert in info.verts:
+        out.putv(vert, order=V3F_ORDER)
+
+    for flag in info.flags:
+        out.put16(flag)

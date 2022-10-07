@@ -117,8 +117,6 @@ def get_output_info(context, string_table):
         model_info.off = info.size
         info.size += model_info.size
 
-    print(info.size)
-
     return info
 
 
