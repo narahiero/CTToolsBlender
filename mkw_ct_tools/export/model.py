@@ -1,11 +1,22 @@
 
 from dataclasses import dataclass, field
+from unicodedata import name
 
 import bpy
 
 from . import utils
 from .buffer import Buffer, V3F_ORDER, V3F_SCALE_ORDER
 from .string_table import StringTable
+
+
+@dataclass
+class ModelTextureOutputInfo:
+    off: int = 0
+    size: int = 0
+    use_count: int = 0
+
+    tex: bpy.types.Texture = None
+    name_off: int = 0
 
 
 @dataclass
@@ -51,6 +62,9 @@ class ModelOutputInfo:
     off: int = 0
     size: int = 0
 
+    texs_off: int = 0
+    texs: dict = field(default_factory=dict)
+
     mats_off: int = 0
     mats: dict = field(default_factory=dict)
 
@@ -64,6 +78,19 @@ class ModelsOutputInfo:
 
     models: list = field(default_factory=list)
 
+
+def collect_textures(data: bpy.types.BlendData, info: ModelsOutputInfo, string_table: StringTable):
+    for texture in data.textures:
+        if texture.type != 'IMAGE':
+            continue
+
+        image = texture.image
+        for model_info in info.models:
+            tex_info = ModelTextureOutputInfo()
+            tex_info.tex = texture
+            tex_info.name_off = string_table[texture.name]
+            tex_info.size = 0x10 + image.size[0] * image.size[1] * 0x04
+            model_info.texs[texture.name] = tex_info
 
 def collect_materials(scene: bpy.types.Scene, info: ModelsOutputInfo, string_table: StringTable):
     for obj in scene.objects:
@@ -177,13 +204,21 @@ def get_output_info(context, string_table):
     info.models.append(ModelOutputInfo())  # course model
     info.models.append(ModelOutputInfo())  # skybox model
 
+    collect_textures(context.blend_data, info, string_table)
     collect_materials(context.scene, info, string_table)
     collect_objects(context.scene.collection, info, string_table)
 
     info.size = 0x08
 
     for model_info in info.models:
-        model_info.size = 0x08
+        model_info.size = 0x0C
+
+        model_info.texs_off = model_info.size
+        texs_size = 0x04 + len(model_info.texs) * 0x04
+        for tex_info in model_info.texs.values():
+            tex_info.off = texs_size
+            texs_size += tex_info.size
+        model_info.size += texs_size
 
         for mat_name in list(model_info.mats.keys()):
             if model_info.mats[mat_name].use_count == 0:
@@ -209,18 +244,20 @@ def get_output_info(context, string_table):
     return info
 
 
-def write_v3f_array(data, scale, out: Buffer):
-    out.put32(len(data))
-    for vec in data:
-        out.putv(vec * scale, order=V3F_ORDER)
+def write_texture(tex_info: ModelTextureOutputInfo, out: Buffer):
+    model_settings = tex_info.tex.mkwctt_model_settings
 
-def write_inds_array(data, out: Buffer):
-    out.put8(0x90)  # wii graphics code draw triangles command byte
-    out.put16(len(data))
-    for vert in data:
-        for idx in vert:
-            out.put16(idx)
+    out.put32(tex_info.name_off)
+    out.put32(tex_info.tex.image.size[0])
+    out.put32(tex_info.tex.image.size[1])
+
+    out.put8(utils.get_enum_number(model_settings, 'format'))
+    out.put8(1 if model_settings.gen_mipmaps else 0)
+    out.put8(model_settings.gen_mipmap_count)
     out.put8(0)  # padding
+
+    for comp in tex_info.tex.image.pixels:
+        out.put8(int(comp * 0xFF))
 
 def write_material(mat_info: ModelMaterialOutputInfo, out: Buffer):
     model_settings = mat_info.mat.mkwctt_model_settings
@@ -236,6 +273,19 @@ def write_part(part_info: ModelPartOutputInfo, out: Buffer):
     out.put32(part_info.mat_name_off)
 
     write_inds_array(part_info.inds, out)
+
+def write_v3f_array(data, scale, out: Buffer):
+    out.put32(len(data))
+    for vec in data:
+        out.putv(vec * scale, order=V3F_ORDER)
+
+def write_inds_array(data, out: Buffer):
+    out.put8(0x90)  # wii graphics code draw triangles command byte
+    out.put16(len(data))
+    for vert in data:
+        for idx in vert:
+            out.put16(idx)
+    out.put8(0)  # padding
 
 def write_object(obj_info: ModelObjectOutputInfo, scale, out: Buffer):
     out.put32(obj_info.name_off)
@@ -257,8 +307,15 @@ def write_object(obj_info: ModelObjectOutputInfo, scale, out: Buffer):
         write_part(part_info, out.slice(off=part_info.off))
 
 def write_model(model_info: ModelOutputInfo, scale, out: Buffer):
+    out.put32(model_info.texs_off)
     out.put32(model_info.mats_off)
     out.put32(model_info.objs_off)
+
+    out.pos = model_info.texs_off
+    out.put32(len(model_info.texs))
+    for tex_info in model_info.texs.values():
+        out.put32(tex_info.off)
+        write_texture(tex_info, out)
 
     out.pos = model_info.mats_off
     out.put32(len(model_info.mats))

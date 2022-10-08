@@ -4,6 +4,32 @@
 #include <CTLib/Ext/MDL0.hpp>
 
 
+void buildTexture(CTLib::Buffer& data, CTLib::BRRES& brres, const CTLib::Buffer& stringTable)
+{
+    uint32_t nameOff = data.getInt();
+    std::string name = (char*)(*stringTable + nameOff);
+
+    uint32_t width = data.getInt();
+    uint32_t height = data.getInt();
+
+    CTLib::ImageFormat format = static_cast<CTLib::ImageFormat>(data.get());
+    bool genMipmaps = data.get();
+    uint8_t genMipmapCount = data.get();
+    data.get(); // padding
+
+    CTLib::Buffer texData = data.slice();
+    texData.limit(width * height * 0x04);
+    CTLib::Image image(width, height, texData);
+
+    CTLib::TEX0* tex0 = brres.add<CTLib::TEX0>(name);
+    tex0->setTextureData(image, format);
+
+    if (genMipmaps)
+    {
+        tex0->generateMipmaps(genMipmapCount, image);
+    }
+}
+
 void setupMDL0(CTLib::MDL0* mdl0)
 {
     mdl0->add<CTLib::MDL0::Bone>("root");
@@ -122,8 +148,19 @@ CTLib::BRRES buildBRRES(CTLib::Buffer& data, const char* name, const CTLib::Buff
     CTLib::MDL0* mdl0 = brres.add<CTLib::MDL0>(name);
     setupMDL0(mdl0);
 
+    uint32_t texsOff = data.getInt();
     uint32_t matsOff = data.getInt();
     uint32_t objsOff = data.getInt();
+
+    data.position(texsOff);
+    CTLib::Buffer texData = data.slice();
+    uint32_t texCount = data.getInt();
+    for (uint32_t i = 0; i < texCount; ++i)
+    {
+        uint32_t texOff = data.getInt();
+        texData.position(texOff);
+        buildTexture(texData.slice(), brres, stringTable);
+    }
 
     data.position(matsOff);
     CTLib::Buffer matData = data.slice();

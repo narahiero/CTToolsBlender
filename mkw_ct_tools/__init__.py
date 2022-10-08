@@ -46,6 +46,8 @@ classes = (
     model_settings.OBJECT_PT_mkwctt_model_settings,
     model_settings.MATERIAL_PG_mkwctt_model_settings,
     model_settings.MATERIAL_PT_mkwctt_model_settings,
+    model_settings.TEXTURE_PG_mkwctt_model_settings,
+    model_settings.TEXTURE_PT_mkwctt_model_settings,
 
     collision_settings.OBJECT_PG_mkwctt_collision_settings,
     collision_settings.OBJECT_PT_mkwctt_collision_settings,
@@ -67,6 +69,8 @@ def register():
 
     bpy.types.Scene.mkwctt_export_info = bpy.props.PointerProperty(type=export_info.SCENE_PG_mkwctt_export_info)
     bpy.types.Scene.mkwctt_race_settings = bpy.props.PointerProperty(type=track_info.SCENE_PG_mkwctt_race_settings)
+
+    bpy.types.Texture.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.TEXTURE_PG_mkwctt_model_settings)
 
 def unregister():
     for cls in reversed(classes):
