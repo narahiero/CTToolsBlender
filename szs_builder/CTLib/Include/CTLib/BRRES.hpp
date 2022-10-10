@@ -1809,7 +1809,8 @@ public:
      */
     Bone* getRootBone() const;
 
-    /*! @brief Links the specified TEX0 to this MDL0.
+    /*! @brief Links the specified TEX0 to this MDL0. If this MDL0 already has
+     *  a TextureLink to that TEX0, the existing link is returned.
      *  
      *  **Warning**: If the specified TEX0 instance is removed from its BRRES,
      *  _THE RETURNED TextureLink INSTANCE WILL GET REMOVED AND **DELETED**!!!_

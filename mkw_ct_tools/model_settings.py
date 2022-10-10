@@ -43,6 +43,50 @@ class OBJECT_PT_mkwctt_model_settings(bpy.types.Panel):
 ########### MATERIAL ###########################################################
 
 
+class MATERIAL_PG_mkwctt_model_settings_layer(bpy.types.PropertyGroup):
+    texture: bpy.props.PointerProperty(
+        type=bpy.types.Texture,
+        name="Texture",
+        description="The layer texture",
+        poll=lambda self, texture: texture.type == 'IMAGE',
+    )
+
+    wrap_mode: bpy.props.EnumProperty(
+        name="Wrap Mode",
+        description="How the texture is extended past its edges",
+        items=[
+            ('clamp', "Clamp", "Clamp on edges", 0x00),
+            ('repeat', "Repeat", "Repeat on edges", 0x01),
+            ('mirror', "Mirror", "Mirror on edges", 0x02),
+        ],
+        default='repeat',
+    )
+
+    min_filter: bpy.props.EnumProperty(
+        name="Min Filter",
+        description="How the texture is sampled when minified",
+        items=[
+            ('nearest', "Nearest", "Sample nearest texel", 0x00),
+            ('linear', "Linear", "Linear interpolation of texels", 0x01),
+            ('nearest_mipmap_nearest', "Nearest, Mipmap Nearest", "Sample nearest texel from nearest mipmap", 0x02),
+            ('linear_mipmap_nearest', "Linear, Mipmap Nearest", "Sample nearest texel from linear interpolation of mipmaps", 0x03),
+            ('nearest_mipmap_linear', "Nearest, Mipmap Linear", "Linear interpolation of texels from nearest mipmap", 0x04),
+            ('linear_mipmap_linear', "Linear, Mipmap Linear", "Linear interpolation of texels from linear interpolation of mipmaps", 0x05),
+        ],
+        default='linear_mipmap_linear',
+    )
+
+    mag_filter: bpy.props.EnumProperty(
+        name="Mag Filter",
+        description="How the texture is sampled when magnified",
+        items=[
+            ('nearest', "Nearest", "Sample nearest texel", 0x00),
+            ('linear', "Linear", "Linear interpolation of texels", 0x01),
+        ],
+        default='linear',
+    )
+
+
 class MATERIAL_PG_mkwctt_model_settings(bpy.types.PropertyGroup):
     enable: bpy.props.BoolProperty(
         name="Override object model settings",
@@ -57,6 +101,75 @@ class MATERIAL_PG_mkwctt_model_settings(bpy.types.PropertyGroup):
         min=0., max=1.,
         default=(.5, .5, .5),
     )
+
+    layers: bpy.props.CollectionProperty(
+        type=MATERIAL_PG_mkwctt_model_settings_layer,
+    )
+
+    layer_index: bpy.props.IntProperty(
+        default=0,
+    )
+
+
+class MATERIAL_OT_mkwctt_model_settings_layers_action(bpy.types.Operator):
+    bl_idname = 'material.mkwctt_model_settings_layers_action'
+    bl_label = "Material layer operations"
+    bl_options = {'UNDO', 'INTERNAL'}
+
+    action: bpy.props.EnumProperty(
+        items=[
+            ('add', "Add", ""),
+            ('remove', "Remove", ""),
+            ('up', "Up", ""),
+            ('down', "Down", ""),
+        ],
+    )
+
+    def invoke(self, context, event):
+        if context.active_object is None or context.active_object.active_material is None:
+            return {'FINISHED'}
+
+        model_settings = context.active_object.active_material.mkwctt_model_settings
+
+        if self.action == 'add':
+            if len(model_settings.layers) == 256:
+                self.report({'ERROR'}, "Materials cannot have more than 256 layers each.")
+                return {'FINISHED'}
+
+            model_settings.layers.add()
+            model_settings.layer_index = len(model_settings.layers) - 1
+
+        elif self.action == 'remove':
+            if len(model_settings.layers) == 0:
+                self.report({'ERROR'}, "There are no layers to remove.")
+                return {'FINISHED'}
+
+            model_settings.layers.remove(model_settings.layer_index)
+
+            if model_settings.layer_index > 0:
+                model_settings.layer_index -= 1
+
+        elif self.action == 'up':
+            if model_settings.layer_index == 0:
+                return {'FINISHED'}
+
+            model_settings.layers.move(model_settings.layer_index, model_settings.layer_index - 1)
+            model_settings.layer_index -= 1
+
+        elif self.action == 'down':
+            if model_settings.layer_index >= len(model_settings.layers) - 1:
+                return {'FINISHED'}
+
+            model_settings.layers.move(model_settings.layer_index, model_settings.layer_index + 1)
+            model_settings.layer_index += 1
+
+        return {'FINISHED'}
+
+
+class MATERIAL_UL_mkwctt_model_settings_layers(bpy.types.UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname, index):
+        layout.label(text=f"Layer {index + 1}")
+        layout.prop(item, 'texture', emboss=False, text="")
 
 
 class MATERIAL_PT_mkwctt_model_settings(bpy.types.Panel):
@@ -84,6 +197,46 @@ class MATERIAL_PT_mkwctt_model_settings(bpy.types.Panel):
 
         else:
             layout.label(text="Faces with this material are not included in the course model.")
+
+
+class MATERIAL_PT_mkwctt_model_settings_layers(bpy.types.Panel):
+    bl_parent_id = 'MATERIAL_PT_mkwctt_model_settings'
+    bl_label = "Layers"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "material"
+
+    @classmethod
+    def poll(self, context):
+        return context.active_object.active_material.mkwctt_model_settings.enable
+
+    def draw_header(self, context):
+        self.layout.label(text="", icon='RENDERLAYERS')
+
+    def draw(self, context):
+        model_settings = context.active_object.active_material.mkwctt_model_settings
+
+        layout = self.layout
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+
+        row = layout.row()
+        row.template_list('MATERIAL_UL_mkwctt_model_settings_layers', '', model_settings, 'layers', model_settings, 'layer_index', rows=3)
+
+        col = row.column(align=True)
+        col.operator('material.mkwctt_model_settings_layers_action', icon='ADD', text="").action = 'add'
+        col.operator('material.mkwctt_model_settings_layers_action', icon='REMOVE', text="").action = 'remove'
+        col.separator()
+        col.operator('material.mkwctt_model_settings_layers_action', icon='TRIA_UP', text="").action = 'up'
+        col.operator('material.mkwctt_model_settings_layers_action', icon='TRIA_DOWN', text="").action = 'down'
+
+        if len(model_settings.layers) > 0:
+            layer = model_settings.layers[model_settings.layer_index]
+
+            layout.prop(layer, 'texture')
+            layout.prop(layer, 'wrap_mode')
+            layout.prop(layer, 'min_filter')
+            layout.prop(layer, 'mag_filter')
 
 
 ########### TEXTURE ############################################################

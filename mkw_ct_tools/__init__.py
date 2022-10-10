@@ -44,8 +44,12 @@ classes = (
 
     model_settings.OBJECT_PG_mkwctt_model_settings,
     model_settings.OBJECT_PT_mkwctt_model_settings,
+    model_settings.MATERIAL_PG_mkwctt_model_settings_layer,
     model_settings.MATERIAL_PG_mkwctt_model_settings,
+    model_settings.MATERIAL_OT_mkwctt_model_settings_layers_action,
+    model_settings.MATERIAL_UL_mkwctt_model_settings_layers,
     model_settings.MATERIAL_PT_mkwctt_model_settings,
+    model_settings.MATERIAL_PT_mkwctt_model_settings_layers,
     model_settings.TEXTURE_PG_mkwctt_model_settings,
     model_settings.TEXTURE_PT_mkwctt_model_settings,
 

@@ -2,6 +2,10 @@
 
 
 #include <CTLib/Ext/MDL0.hpp>
+#include <CTLib/Utilities.hpp>
+
+
+#define DEFAULT_RESOURCE_NAME "___Default___"
 
 
 void buildTexture(CTLib::Buffer& data, CTLib::BRRES& brres, const CTLib::Buffer& stringTable)
@@ -30,30 +34,67 @@ void buildTexture(CTLib::Buffer& data, CTLib::BRRES& brres, const CTLib::Buffer&
     }
 }
 
+void createDefaultTexture(CTLib::BRRES& brres)
+{
+    if (brres.has<CTLib::TEX0>(DEFAULT_RESOURCE_NAME))
+    {
+        return; // default texture was overwritten in data file
+    }
+
+    CTLib::Image image(1, 1, CTLib::RGBAColour{0x7F, 0x7F, 0x7F, 0xFF});
+    CTLib::TEX0* tex0 = brres.add<CTLib::TEX0>(DEFAULT_RESOURCE_NAME);
+    tex0->setTextureData(image, CTLib::ImageFormat::I4);
+}
+
 void setupMDL0(CTLib::MDL0* mdl0)
 {
     mdl0->add<CTLib::MDL0::Bone>("root");
 
-    CTLib::Ext::ShaderCode shaderCode;
-    CTLib::Ext::ShaderCode::Stage& stageCode = shaderCode.addStage();
-    stageCode.setColourConstantSource(CTLib::Ext::ShaderCode::Stage::ColourConstant::MaterialConstColour0_RGB);
-    stageCode.setColourOp({
-        CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
-        CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
-        CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
-        CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Constant,
-        CTLib::Ext::ShaderCode::Stage::Bias::Zero,
-        CTLib::Ext::ShaderCode::Stage::Op::Add,
-        true,
-        CTLib::Ext::ShaderCode::Stage::Shift::Shift0,
-        CTLib::Ext::ShaderCode::Stage::Dest::PixelOutput,
-    });
-    CTLib::MDL0::Shader* shader = mdl0->add<CTLib::MDL0::Shader>("Shader0");
-    shader->setStageCount(1);
-    shader->setGraphicsCode(shaderCode.toStandardLayout());
+    {
+        CTLib::Ext::ShaderCode shaderCode;
+        CTLib::Ext::ShaderCode::Stage& stageCode = shaderCode.addStage();
+        stageCode.setColourConstantSource(CTLib::Ext::ShaderCode::Stage::ColourConstant::MaterialConstColour0_RGB);
+        stageCode.setColourOp({
+            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
+            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
+            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
+            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Constant,
+            CTLib::Ext::ShaderCode::Stage::Bias::Zero,
+            CTLib::Ext::ShaderCode::Stage::Op::Add,
+            true,
+            CTLib::Ext::ShaderCode::Stage::Shift::Shift0,
+            CTLib::Ext::ShaderCode::Stage::Dest::PixelOutput,
+        });
+        CTLib::MDL0::Shader* shader = mdl0->add<CTLib::MDL0::Shader>("Shader0");
+        shader->setStageCount(1);
+        shader->setGraphicsCode(shaderCode.toStandardLayout());
+    }
+
+    // temporary until shader editor implemented
+    {
+        CTLib::Ext::ShaderCode shaderCode;
+        CTLib::Ext::ShaderCode::Stage& stageCode = shaderCode.addStage();
+        stageCode.setUsesTexture(true);
+        stageCode.setColourConstantSource(CTLib::Ext::ShaderCode::Stage::ColourConstant::MaterialConstColour0_RGB);
+        stageCode.setColourOp({
+            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
+            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Texture,
+            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Constant,
+            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
+            CTLib::Ext::ShaderCode::Stage::Bias::Zero,
+            CTLib::Ext::ShaderCode::Stage::Op::Add,
+            true,
+            CTLib::Ext::ShaderCode::Stage::Shift::Shift0,
+            CTLib::Ext::ShaderCode::Stage::Dest::PixelOutput,
+        });
+        CTLib::MDL0::Shader* shader = mdl0->add<CTLib::MDL0::Shader>("Shader1");
+        shader->setStageCount(1);
+        shader->setTexRef(0, 0);
+        shader->setGraphicsCode(shaderCode.toStandardLayout());
+    }
 }
 
-void buildMaterial(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& stringTable)
+void buildMaterial(CTLib::Buffer& data, CTLib::BRRES& brres, CTLib::MDL0* mdl0, const CTLib::Buffer& stringTable)
 {
     uint32_t nameOff = data.getInt();
     std::string name = (char*)(*stringTable + nameOff);
@@ -62,24 +103,51 @@ void buildMaterial(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& 
     matCode.setConstColour(0, {data.get(), data.get(), data.get(), data.get()});
     CTLib::MDL0::Material* mat = mdl0->add<CTLib::MDL0::Material>(name);
     mat->setGraphicsCode(matCode.toStandardLayout());
-    mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader0"));
+    // mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader0"));
+
+    uint32_t layerCount = data.getInt();
+    if (layerCount == 0)
+    {
+        mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader0"));
+    }
+    else // temporary until shader editor implemented
+    {
+        mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader1"));
+    }
+
+    for (uint32_t i = 0; i < layerCount; ++i)
+    {
+        uint32_t texNameOff = data.getInt();
+        std::string texName = (char*)(*stringTable + texNameOff);
+
+        CTLib::MDL0::TextureLink* link = mdl0->linkTEX0(brres.get<CTLib::TEX0>(texName));
+        CTLib::MDL0::Material::Layer* layer = mat->addLayer(link);
+
+        CTLib::MDL0::Material::Layer::TextureWrap wrapMode = static_cast<CTLib::MDL0::Material::Layer::TextureWrap>(data.get());
+        CTLib::MDL0::Material::Layer::MinFilter minFilter = static_cast<CTLib::MDL0::Material::Layer::MinFilter>(data.get());
+        CTLib::MDL0::Material::Layer::MagFilter magFilter = static_cast<CTLib::MDL0::Material::Layer::MagFilter>(data.get());
+
+        layer->setTextureWrapMode(wrapMode);
+        layer->setMinFilter(minFilter);
+        layer->setMagFilter(magFilter);
+    }
 }
 
 void createDefaultMaterial(CTLib::MDL0* mdl0)
 {
-    if (mdl0->has<CTLib::MDL0::Material>("___Default___"))
+    if (mdl0->has<CTLib::MDL0::Material>(DEFAULT_RESOURCE_NAME))
     {
         return; // default material was overwritten in data file
     }
 
     CTLib::Ext::MaterialCode matCode;
     matCode.setConstColour(0, {0x7F, 0x7F, 0x7F, 0xFF});
-    CTLib::MDL0::Material* mat = mdl0->add<CTLib::MDL0::Material>("___Default___");
+    CTLib::MDL0::Material* mat = mdl0->add<CTLib::MDL0::Material>(DEFAULT_RESOURCE_NAME);
     mat->setGraphicsCode(matCode.toStandardLayout());
     mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader0"));
 }
 
-void buildPart(CTLib::Buffer& data, CTLib::MDL0* mdl0, CTLib::MDL0::VertexArray* va, CTLib::MDL0::NormalArray* na, CTLib::MDL0::Bone* bone, const CTLib::Buffer& stringTable)
+void buildPart(CTLib::Buffer& data, CTLib::MDL0* mdl0, const std::string& objName, uint32_t texcoordCount, const CTLib::Buffer& stringTable)
 {
     uint32_t nameOff = data.getInt();
     std::string name = (char*)(*stringTable + nameOff);
@@ -87,16 +155,26 @@ void buildPart(CTLib::Buffer& data, CTLib::MDL0* mdl0, CTLib::MDL0::VertexArray*
     uint32_t matNameOff = data.getInt();
     std::string matName = (char*)(*stringTable + matNameOff);
 
+    CTLib::MDL0::Bone* bone = mdl0->get<CTLib::MDL0::Bone>(objName);
+
     CTLib::MDL0::Object* obj = mdl0->add<CTLib::MDL0::Object>(name);
     obj->setBone(bone);
-    obj->setVertexArray(va);
+    obj->setVertexArray(mdl0->get<CTLib::MDL0::VertexArray>(objName));
     obj->setVertexArrayIndexSize(2);
-    obj->setNormalArray(na);
+    obj->setNormalArray(mdl0->get<CTLib::MDL0::NormalArray>(objName));
     obj->setNormalArrayIndexSize(2);
+
+    for (uint32_t i = 0; i < texcoordCount; ++i)
+    {
+        obj->setTexCoordArray(mdl0->get<CTLib::MDL0::TexCoordArray>(CTLib::Strings::format("%s___#%d", objName.c_str(), i)), i);
+        obj->setTexCoordArrayIndexSize(i, 2);
+    }
+
+    uint32_t idxSize = 0x04 + texcoordCount * 0x02;
 
     CTLib::Buffer geoData = data.slice();
     uint16_t idxCount = geoData.getShort(0x01);
-    geoData.limit(0x03 + idxCount * 0x04);
+    geoData.limit(0x03 + idxCount * idxSize);
     obj->setGeometryData(geoData);
 
     CTLib::MDL0::Material* mat = mdl0->get<CTLib::MDL0::Material>(matName);
@@ -110,6 +188,7 @@ void buildObject(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& st
 
     uint32_t vertDataOff = data.getInt();
     uint32_t normDataOff = data.getInt();
+    uint32_t texcoordDataOff = data.getInt();
     uint32_t partDataOff = data.getInt();
 
     CTLib::MDL0::Bone* bone = mdl0->getRootBone()->insert(name);
@@ -131,6 +210,18 @@ void buildObject(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& st
     CTLib::MDL0::NormalArray* na = mdl0->add<CTLib::MDL0::NormalArray>(name);
     na->setData(normData);
 
+    data.position(texcoordDataOff);
+    CTLib::Buffer texcoordData = data.slice();
+    uint32_t texcoordLayerCount = texcoordData.getInt();
+    for (uint32_t i = 0; i < texcoordLayerCount; ++i)
+    {
+        texcoordData.limit(texcoordData.position() + 0x04);
+        uint32_t texcoordCount = texcoordData.getInt();
+        texcoordData.limit(texcoordData.position() + texcoordCount * 0x08);
+        CTLib::MDL0::TexCoordArray* tca = mdl0->add<CTLib::MDL0::TexCoordArray>(CTLib::Strings::format("%s___#%d", name.c_str(), i));
+        tca->setData(texcoordData);
+    }
+
     data.position(partDataOff);
     CTLib::Buffer partData = data.slice();
     uint32_t partCount = data.getInt();
@@ -138,7 +229,7 @@ void buildObject(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& st
     {
         uint32_t partOff = data.getInt();
         partData.position(partOff);
-        buildPart(partData.slice(), mdl0, va, na, bone, stringTable);
+        buildPart(partData.slice(), mdl0, name, texcoordLayerCount, stringTable);
     }
 }
 
@@ -162,6 +253,8 @@ CTLib::BRRES buildBRRES(CTLib::Buffer& data, const char* name, const CTLib::Buff
         buildTexture(texData.slice(), brres, stringTable);
     }
 
+    createDefaultTexture(brres);
+
     data.position(matsOff);
     CTLib::Buffer matData = data.slice();
     uint32_t matCount = data.getInt();
@@ -169,7 +262,7 @@ CTLib::BRRES buildBRRES(CTLib::Buffer& data, const char* name, const CTLib::Buff
     {
         uint32_t matOff = data.getInt();
         matData.position(matOff);
-        buildMaterial(matData.slice(), mdl0, stringTable);
+        buildMaterial(matData.slice(), brres, mdl0, stringTable);
     }
 
     createDefaultMaterial(mdl0);

@@ -202,6 +202,11 @@ MDL0::TextureLink* MDL0::linkTEX0(TEX0* tex0)
 {
     assertSameBRRES(tex0);
 
+    if (textureLinkSections.has(tex0->getName()))
+    {
+        return textureLinkSections.get(tex0->getName());
+    }
+
     TextureLink* link = new TextureLink(this, tex0);
     textureLinkSections.directAdd(link);
     return link;

@@ -1,6 +1,5 @@
 
 from dataclasses import dataclass, field
-from unicodedata import name
 
 import bpy
 
@@ -22,10 +21,13 @@ class ModelTextureOutputInfo:
 @dataclass
 class ModelMaterialOutputInfo:
     off: int = 0
+    size: int = 0
     use_count: int = 0
 
     mat: bpy.types.Material = None
     name_off: int = 0
+
+    layer_name_offs: list = field(default_factory=list)
 
 
 @dataclass
@@ -52,6 +54,9 @@ class ModelObjectOutputInfo:
 
     norms_off: int = 0
     norms: list = field(default_factory=list)
+
+    texcoords_off: int = 0
+    texcoords: list = field(default_factory=list)
 
     parts_off: int = 0
     parts: dict = field(default_factory=dict)
@@ -96,13 +101,20 @@ def collect_materials(scene: bpy.types.Scene, info: ModelsOutputInfo, string_tab
     for obj in scene.objects:
         for mat_slot in obj.material_slots:
             for model_info in info.models:
-                if mat_slot.name in model_info.mats or not mat_slot.material.mkwctt_model_settings.enable:
+                mat = mat_slot.material
+                model_settings = mat.mkwctt_model_settings
+                if mat.name in model_info.mats or not model_settings.enable:
                     continue
 
                 mat_info = ModelMaterialOutputInfo()
-                mat_info.mat = mat_slot.material
-                mat_info.name_off = string_table[mat_slot.name]
-                model_info.mats[mat_slot.name] = mat_info
+                mat_info.mat = mat
+                mat_info.name_off = string_table[mat.name]
+                mat_info.size = 0x0C + len(model_settings.layers) * 0x08
+                model_info.mats[mat.name] = mat_info
+
+                for layer in model_settings.layers:
+                    tex_name = "___Default___" if layer.texture is None else layer.texture.name
+                    mat_info.layer_name_offs.append(string_table[tex_name])
 
 def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, string_table: StringTable):
     collection_settings = collection.mkwctt_collection_settings
@@ -137,6 +149,15 @@ def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, st
         obj_info.verts = list(vset)
         obj_info.norms = list(nset)
 
+        for uv_layer in mesh.uv_layers:
+            uvset = set()
+            for uv in uv_layer.data:
+                uvset.add(uv.uv.copy().freeze())
+
+            obj_info.texcoords.append(list(uvset))
+            if len(obj_info.texcoords) == 8:
+                break  # mdl0 support up to 8 texture coord layers per object
+
         if len(obj.material_slots) > 0:
             for mat_slot in obj.material_slots:
                 if mat_slot.name not in model_info.mats:
@@ -155,19 +176,24 @@ def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, st
             part_info.size = 0x0C
             obj_info.parts[0] = part_info
 
+        idx_size = 0x04 + len(obj_info.texcoords) * 0x02
+
         mesh.calc_loop_triangles()
         for tri in mesh.loop_triangles:
             if tri.material_index not in obj_info.parts:
                 continue
 
             part_info = obj_info.parts[tri.material_index]
-            for vert in reversed(tri.vertices):  # blender draws ccw while wii draws cw
-                part_info.inds.append((
+            for vert, loop in zip(reversed(tri.vertices), reversed(tri.loops)):  # blender draws ccw while wii draws cw
+                idx = [
                     obj_info.verts.index(mesh.vertices[vert].co),
                     obj_info.norms.index(mesh.vertices[vert].normal),
-                ))
+                ]
+                for layer_idx, layer in enumerate(obj_info.texcoords):
+                    idx.append(layer.index(mesh.uv_layers[layer_idx].data[loop].uv))
+                part_info.inds.append(idx)
 
-            part_info.size += 0x0C
+            part_info.size += idx_size * 3
 
         for mat_idx in list(obj_info.parts.keys()):
             if len(obj_info.parts[mat_idx].inds) == 0:
@@ -176,13 +202,18 @@ def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, st
         if len(obj_info.parts) == 0:
             continue
 
-        obj_info.size = 0x34
+        obj_info.size = 0x38
 
         obj_info.verts_off = obj_info.size
         obj_info.size += 0x04 + len(obj_info.verts) * 0x0C
 
         obj_info.norms_off = obj_info.size
         obj_info.size += 0x04 + len(obj_info.norms) * 0x0C
+
+        obj_info.texcoords_off = obj_info.size
+        obj_info.size += 0x04
+        for texcoord_layer in obj_info.texcoords:
+            obj_info.size += 0x04 + len(texcoord_layer) * 0x08
 
         obj_info.parts_off = obj_info.size
         parts_size = 0x04 + len(obj_info.parts) * 0x04
@@ -228,7 +259,7 @@ def get_output_info(context, string_table):
         mats_size = 0x04 + len(model_info.mats) * 0x04
         for mat_info in model_info.mats.values():
             mat_info.off = mats_size
-            mats_size += 0x08
+            mats_size += mat_info.size
         model_info.size += mats_size
 
         model_info.objs_off = model_info.size
@@ -268,16 +299,24 @@ def write_material(mat_info: ModelMaterialOutputInfo, out: Buffer):
         out.put8(int(comp * 0xFF))
     out.put8(0xFF)  # padding (alpha/unused)
 
-def write_part(part_info: ModelPartOutputInfo, out: Buffer):
-    out.put32(part_info.name_off)
-    out.put32(part_info.mat_name_off)
+    out.put32(len(model_settings.layers))
 
-    write_inds_array(part_info.inds, out)
+    for layer_index, layer in enumerate(model_settings.layers):
+        out.put32(mat_info.layer_name_offs[layer_index])
+        out.put8(utils.get_enum_number(layer, 'wrap_mode'))
+        out.put8(utils.get_enum_number(layer, 'min_filter'))
+        out.put8(utils.get_enum_number(layer, 'mag_filter'))
+        out.put8(0)  # padding
 
 def write_v3f_array(data, scale, out: Buffer):
     out.put32(len(data))
     for vec in data:
         out.putv(vec * scale, order=V3F_ORDER)
+
+def write_uv_array(data, out: Buffer):
+    out.put32(len(data))
+    for vec in data:
+        out.putv(vec)
 
 def write_inds_array(data, out: Buffer):
     out.put8(0x90)  # wii graphics code draw triangles command byte
@@ -287,10 +326,17 @@ def write_inds_array(data, out: Buffer):
             out.put16(idx)
     out.put8(0)  # padding
 
+def write_part(part_info: ModelPartOutputInfo, out: Buffer):
+    out.put32(part_info.name_off)
+    out.put32(part_info.mat_name_off)
+
+    write_inds_array(part_info.inds, out)
+
 def write_object(obj_info: ModelObjectOutputInfo, scale, out: Buffer):
     out.put32(obj_info.name_off)
     out.put32(obj_info.verts_off)
     out.put32(obj_info.norms_off)
+    out.put32(obj_info.texcoords_off)
     out.put32(obj_info.parts_off)
 
     out.putv(obj_info.obj.location * scale, order=V3F_ORDER)
@@ -299,6 +345,11 @@ def write_object(obj_info: ModelObjectOutputInfo, scale, out: Buffer):
 
     write_v3f_array(obj_info.verts, scale, out.slice(off=obj_info.verts_off))
     write_v3f_array(obj_info.norms, 1., out.slice(off=obj_info.norms_off))
+
+    out.pos = obj_info.texcoords_off
+    out.put32(len(obj_info.texcoords))
+    for texcoord_layer in obj_info.texcoords:
+        write_uv_array(texcoord_layer, out)
 
     out = out.slice(off=obj_info.parts_off)
     out.put32(len(obj_info.parts))
@@ -315,7 +366,7 @@ def write_model(model_info: ModelOutputInfo, scale, out: Buffer):
     out.put32(len(model_info.texs))
     for tex_info in model_info.texs.values():
         out.put32(tex_info.off)
-        write_texture(tex_info, out)
+        write_texture(tex_info, out.slice(off=model_info.texs_off + tex_info.off))
 
     out.pos = model_info.mats_off
     out.put32(len(model_info.mats))
