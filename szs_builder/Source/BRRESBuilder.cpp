@@ -5,7 +5,7 @@
 #include <CTLib/Utilities.hpp>
 
 
-#define DEFAULT_RESOURCE_NAME "___Default___"
+const std::string DEFAULT_RESOURCE_NAME = "___Default___";
 
 
 void buildTexture(CTLib::Buffer& data, CTLib::BRRES& brres, const CTLib::Buffer& stringTable)
@@ -46,52 +46,81 @@ void createDefaultTexture(CTLib::BRRES& brres)
     tex0->setTextureData(image, CTLib::ImageFormat::I4);
 }
 
-void setupMDL0(CTLib::MDL0* mdl0)
+void buildShader(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& stringTable)
 {
-    mdl0->add<CTLib::MDL0::Bone>("root");
+    uint32_t nameOff = data.getInt();
+    std::string name = (char*)(*stringTable + nameOff);
 
+    CTLib::Ext::ShaderCode shaderCode;
+
+    uint32_t stageCount = data.getInt();
+    for (uint32_t i = 0; i < stageCount; ++i)
     {
-        CTLib::Ext::ShaderCode shaderCode;
         CTLib::Ext::ShaderCode::Stage& stageCode = shaderCode.addStage();
-        stageCode.setColourConstantSource(CTLib::Ext::ShaderCode::Stage::ColourConstant::MaterialConstColour0_RGB);
-        stageCode.setColourOp({
-            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
-            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
-            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
-            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Constant,
-            CTLib::Ext::ShaderCode::Stage::Bias::Zero,
-            CTLib::Ext::ShaderCode::Stage::Op::Add,
-            true,
-            CTLib::Ext::ShaderCode::Stage::Shift::Shift0,
-            CTLib::Ext::ShaderCode::Stage::Dest::PixelOutput,
-        });
-        CTLib::MDL0::Shader* shader = mdl0->add<CTLib::MDL0::Shader>("Shader0");
-        shader->setStageCount(1);
-        shader->setGraphicsCode(shaderCode.toStandardLayout());
+        stageCode.setUsesTexture(data.get());
+        stageCode.setTexCoordIndex(data.get());
+
+        data.getShort(); // padding
+
+        stageCode.setColourConstantSource(static_cast<CTLib::Ext::ShaderCode::Stage::ColourConstant>(data.get()));
+
+        CTLib::Ext::ShaderCode::Stage::ColourOp co;
+        co.argA = static_cast<CTLib::Ext::ShaderCode::Stage::ColourOp::Arg>(data.get());
+        co.argB = static_cast<CTLib::Ext::ShaderCode::Stage::ColourOp::Arg>(data.get());
+        co.argC = static_cast<CTLib::Ext::ShaderCode::Stage::ColourOp::Arg>(data.get());
+        co.argD = static_cast<CTLib::Ext::ShaderCode::Stage::ColourOp::Arg>(data.get());
+        co.bias = static_cast<CTLib::Ext::ShaderCode::Stage::Bias>(data.get());
+        co.op = static_cast<CTLib::Ext::ShaderCode::Stage::Op>(data.get());
+        co.clamp = data.get();
+        co.shift = static_cast<CTLib::Ext::ShaderCode::Stage::Shift>(data.get());
+        co.dest = static_cast<CTLib::Ext::ShaderCode::Stage::Dest>(data.get());
+        stageCode.setColourOp(co);
+
+        stageCode.setAlphaConstantSource(static_cast<CTLib::Ext::ShaderCode::Stage::AlphaConstant>(data.get()));
+
+        CTLib::Ext::ShaderCode::Stage::AlphaOp ao;
+        ao.argA = static_cast<CTLib::Ext::ShaderCode::Stage::AlphaOp::Arg>(data.get());
+        ao.argB = static_cast<CTLib::Ext::ShaderCode::Stage::AlphaOp::Arg>(data.get());
+        ao.argC = static_cast<CTLib::Ext::ShaderCode::Stage::AlphaOp::Arg>(data.get());
+        ao.argD = static_cast<CTLib::Ext::ShaderCode::Stage::AlphaOp::Arg>(data.get());
+        ao.bias = static_cast<CTLib::Ext::ShaderCode::Stage::Bias>(data.get());
+        ao.op = static_cast<CTLib::Ext::ShaderCode::Stage::Op>(data.get());
+        ao.clamp = data.get();
+        ao.shift = static_cast<CTLib::Ext::ShaderCode::Stage::Shift>(data.get());
+        ao.dest = static_cast<CTLib::Ext::ShaderCode::Stage::Dest>(data.get());
+        stageCode.setAlphaOp(ao);
     }
 
-    // temporary until shader editor implemented
+    CTLib::MDL0::Shader* shader = mdl0->add<CTLib::MDL0::Shader>(name);
+    shader->setStageCount(stageCount);
+    shader->setTexRef(0, 0); // temporarily hard-coded
+    shader->setGraphicsCode(shaderCode.toStandardLayout());
+}
+
+void createDefaultShader(CTLib::MDL0* mdl0)
+{
+    if (mdl0->has<CTLib::MDL0::Shader>(DEFAULT_RESOURCE_NAME))
     {
-        CTLib::Ext::ShaderCode shaderCode;
-        CTLib::Ext::ShaderCode::Stage& stageCode = shaderCode.addStage();
-        stageCode.setUsesTexture(true);
-        stageCode.setColourConstantSource(CTLib::Ext::ShaderCode::Stage::ColourConstant::MaterialConstColour0_RGB);
-        stageCode.setColourOp({
-            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
-            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Texture,
-            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Constant,
-            CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
-            CTLib::Ext::ShaderCode::Stage::Bias::Zero,
-            CTLib::Ext::ShaderCode::Stage::Op::Add,
-            true,
-            CTLib::Ext::ShaderCode::Stage::Shift::Shift0,
-            CTLib::Ext::ShaderCode::Stage::Dest::PixelOutput,
-        });
-        CTLib::MDL0::Shader* shader = mdl0->add<CTLib::MDL0::Shader>("Shader1");
-        shader->setStageCount(1);
-        shader->setTexRef(0, 0);
-        shader->setGraphicsCode(shaderCode.toStandardLayout());
+        return; // default shader was overwritten in data file
     }
+
+    CTLib::Ext::ShaderCode shaderCode;
+    CTLib::Ext::ShaderCode::Stage& stageCode = shaderCode.addStage();
+    stageCode.setColourConstantSource(CTLib::Ext::ShaderCode::Stage::ColourConstant::MaterialConstColour0_RGB);
+    stageCode.setColourOp({
+        CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
+        CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
+        CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Zero,
+        CTLib::Ext::ShaderCode::Stage::ColourOp::Arg::Constant,
+        CTLib::Ext::ShaderCode::Stage::Bias::Zero,
+        CTLib::Ext::ShaderCode::Stage::Op::Add,
+        true,
+        CTLib::Ext::ShaderCode::Stage::Shift::Shift0,
+        CTLib::Ext::ShaderCode::Stage::Dest::PixelOutput,
+    });
+    CTLib::MDL0::Shader* shader = mdl0->add<CTLib::MDL0::Shader>(DEFAULT_RESOURCE_NAME);
+    shader->setStageCount(1);
+    shader->setGraphicsCode(shaderCode.toStandardLayout());
 }
 
 void buildMaterial(CTLib::Buffer& data, CTLib::BRRES& brres, CTLib::MDL0* mdl0, const CTLib::Buffer& stringTable)
@@ -99,22 +128,15 @@ void buildMaterial(CTLib::Buffer& data, CTLib::BRRES& brres, CTLib::MDL0* mdl0, 
     uint32_t nameOff = data.getInt();
     std::string name = (char*)(*stringTable + nameOff);
 
+    uint32_t shaderNameOff = data.getInt();
+    std::string shaderName = (char*)(*stringTable + shaderNameOff);
+
     CTLib::Ext::MaterialCode matCode;
     matCode.setConstColour(0, {data.get(), data.get(), data.get(), data.get()});
     CTLib::MDL0::Material* mat = mdl0->add<CTLib::MDL0::Material>(name);
     mat->setGraphicsCode(matCode.toStandardLayout());
-    // mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader0"));
 
     uint32_t layerCount = data.getInt();
-    if (layerCount == 0)
-    {
-        mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader0"));
-    }
-    else // temporary until shader editor implemented
-    {
-        mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader1"));
-    }
-
     for (uint32_t i = 0; i < layerCount; ++i)
     {
         uint32_t texNameOff = data.getInt();
@@ -131,6 +153,8 @@ void buildMaterial(CTLib::Buffer& data, CTLib::BRRES& brres, CTLib::MDL0* mdl0, 
         layer->setMinFilter(minFilter);
         layer->setMagFilter(magFilter);
     }
+
+    mat->setShader(mdl0->get<CTLib::MDL0::Shader>(shaderName));
 }
 
 void createDefaultMaterial(CTLib::MDL0* mdl0)
@@ -144,7 +168,7 @@ void createDefaultMaterial(CTLib::MDL0* mdl0)
     matCode.setConstColour(0, {0x7F, 0x7F, 0x7F, 0xFF});
     CTLib::MDL0::Material* mat = mdl0->add<CTLib::MDL0::Material>(DEFAULT_RESOURCE_NAME);
     mat->setGraphicsCode(matCode.toStandardLayout());
-    mat->setShader(mdl0->get<CTLib::MDL0::Shader>("Shader0"));
+    mat->setShader(mdl0->get<CTLib::MDL0::Shader>(DEFAULT_RESOURCE_NAME));
 }
 
 void buildPart(CTLib::Buffer& data, CTLib::MDL0* mdl0, const std::string& objName, uint32_t texcoordCount, const CTLib::Buffer& stringTable)
@@ -237,9 +261,10 @@ CTLib::BRRES buildBRRES(CTLib::Buffer& data, const char* name, const CTLib::Buff
 {
     CTLib::BRRES brres;
     CTLib::MDL0* mdl0 = brres.add<CTLib::MDL0>(name);
-    setupMDL0(mdl0);
+    mdl0->add<CTLib::MDL0::Bone>("root");
 
     uint32_t texsOff = data.getInt();
+    uint32_t shadersOff = data.getInt();
     uint32_t matsOff = data.getInt();
     uint32_t objsOff = data.getInt();
 
@@ -254,6 +279,18 @@ CTLib::BRRES buildBRRES(CTLib::Buffer& data, const char* name, const CTLib::Buff
     }
 
     createDefaultTexture(brres);
+
+    data.position(shadersOff);
+    CTLib::Buffer shaderData = data.slice();
+    uint32_t shaderCount = data.getInt();
+    for (uint32_t i = 0; i < shaderCount; ++i)
+    {
+        uint32_t shaderOff = data.getInt();
+        shaderData.position(shaderOff);
+        buildShader(shaderData.slice(), mdl0, stringTable);
+    }
+
+    createDefaultShader(mdl0);
 
     data.position(matsOff);
     CTLib::Buffer matData = data.slice();

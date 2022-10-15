@@ -18,6 +18,7 @@ if 'bpy' in locals():
     importlib.reload(export_info)
     importlib.reload(model_settings)
     importlib.reload(track_info)
+    importlib.reload(utils)
 
 else:
     from . import collection_settings
@@ -26,6 +27,7 @@ else:
     from . import export_info
     from . import model_settings
     from . import track_info
+    from . import utils
 
 
 import bpy
@@ -44,12 +46,20 @@ classes = (
 
     model_settings.OBJECT_PG_mkwctt_model_settings,
     model_settings.OBJECT_PT_mkwctt_model_settings,
+    model_settings.SCENE_PG_mkwctt_model_shader_stage,
+    model_settings.SCENE_PG_mkwctt_model_shader,
     model_settings.MATERIAL_PG_mkwctt_model_settings_layer,
     model_settings.MATERIAL_PG_mkwctt_model_settings,
     model_settings.MATERIAL_OT_mkwctt_model_settings_layers_action,
+    model_settings.MATERIAL_OT_mkwctt_model_shader_add,
+    model_settings.MATERIAL_OT_mkwctt_model_shader_remove,
+    model_settings.MATERIAL_OT_mkwctt_model_shader_duplicate,
+    model_settings.MATERIAL_OT_mkwctt_model_shader_stages_action,
     model_settings.MATERIAL_UL_mkwctt_model_settings_layers,
+    model_settings.MATERIAL_UL_mkwctt_model_shader_stages,
     model_settings.MATERIAL_PT_mkwctt_model_settings,
     model_settings.MATERIAL_PT_mkwctt_model_settings_layers,
+    model_settings.MATERIAL_PT_mkwctt_model_shader,
     model_settings.TEXTURE_PG_mkwctt_model_settings,
     model_settings.TEXTURE_PT_mkwctt_model_settings,
 
@@ -73,6 +83,7 @@ def register():
 
     bpy.types.Scene.mkwctt_export_info = bpy.props.PointerProperty(type=export_info.SCENE_PG_mkwctt_export_info)
     bpy.types.Scene.mkwctt_race_settings = bpy.props.PointerProperty(type=track_info.SCENE_PG_mkwctt_race_settings)
+    bpy.types.Scene.mkwctt_model_shaders = bpy.props.CollectionProperty(type=model_settings.SCENE_PG_mkwctt_model_shader)
 
     bpy.types.Texture.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.TEXTURE_PG_mkwctt_model_settings)
 
