@@ -171,7 +171,7 @@ void createDefaultMaterial(CTLib::MDL0* mdl0)
     mat->setShader(mdl0->get<CTLib::MDL0::Shader>(DEFAULT_RESOURCE_NAME));
 }
 
-void buildPart(CTLib::Buffer& data, CTLib::MDL0* mdl0, const std::string& objName, uint32_t texcoordCount, const CTLib::Buffer& stringTable)
+void buildPart(CTLib::Buffer& data, CTLib::MDL0* mdl0, const std::string& objName, uint32_t colourCount, uint32_t texcoordCount, const CTLib::Buffer& stringTable)
 {
     uint32_t nameOff = data.getInt();
     std::string name = (char*)(*stringTable + nameOff);
@@ -188,13 +188,19 @@ void buildPart(CTLib::Buffer& data, CTLib::MDL0* mdl0, const std::string& objNam
     obj->setNormalArray(mdl0->get<CTLib::MDL0::NormalArray>(objName));
     obj->setNormalArrayIndexSize(2);
 
+    for (uint32_t i = 0; i < colourCount; ++i)
+    {
+        obj->setColourArray(mdl0->get<CTLib::MDL0::ColourArray>(CTLib::Strings::format("%s___#%d", objName.c_str(), i)), i);
+        obj->setColourArrayIndexSize(i, 2);
+    }
+
     for (uint32_t i = 0; i < texcoordCount; ++i)
     {
         obj->setTexCoordArray(mdl0->get<CTLib::MDL0::TexCoordArray>(CTLib::Strings::format("%s___#%d", objName.c_str(), i)), i);
         obj->setTexCoordArrayIndexSize(i, 2);
     }
 
-    uint32_t idxSize = 0x04 + texcoordCount * 0x02;
+    uint32_t idxSize = 0x04 + colourCount * 0x02 + texcoordCount * 0x02;
 
     CTLib::Buffer geoData = data.slice();
     uint16_t idxCount = geoData.getShort(0x01);
@@ -212,6 +218,7 @@ void buildObject(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& st
 
     uint32_t vertDataOff = data.getInt();
     uint32_t normDataOff = data.getInt();
+    uint32_t colourDataOff = data.getInt();
     uint32_t texcoordDataOff = data.getInt();
     uint32_t partDataOff = data.getInt();
 
@@ -234,6 +241,18 @@ void buildObject(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& st
     CTLib::MDL0::NormalArray* na = mdl0->add<CTLib::MDL0::NormalArray>(name);
     na->setData(normData);
 
+    data.position(colourDataOff);
+    CTLib::Buffer colourData = data.slice();
+    uint32_t colourLayerCount = colourData.getInt();
+    for (uint32_t i = 0; i < colourLayerCount; ++i)
+    {
+        colourData.limit(colourData.position() + 0x04);
+        uint32_t colourCount = colourData.getInt();
+        colourData.limit(colourData.position() + colourCount * 0x04);
+        CTLib::MDL0::ColourArray* ca = mdl0->add<CTLib::MDL0::ColourArray>(CTLib::Strings::format("%s___#%d", name.c_str(), i));
+        ca->setData(colourData);
+    }
+
     data.position(texcoordDataOff);
     CTLib::Buffer texcoordData = data.slice();
     uint32_t texcoordLayerCount = texcoordData.getInt();
@@ -253,7 +272,7 @@ void buildObject(CTLib::Buffer& data, CTLib::MDL0* mdl0, const CTLib::Buffer& st
     {
         uint32_t partOff = data.getInt();
         partData.position(partOff);
-        buildPart(partData.slice(), mdl0, name, texcoordLayerCount, stringTable);
+        buildPart(partData.slice(), mdl0, name, colourLayerCount, texcoordLayerCount, stringTable);
     }
 }
 

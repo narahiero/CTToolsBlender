@@ -2,12 +2,16 @@
 from dataclasses import dataclass, field
 
 import bpy
+from mathutils import Vector
 
 from ..model_settings import SCENE_PG_mkwctt_model_shader
 
 from . import utils
 from .buffer import Buffer, V3F_ORDER, V3F_SCALE_ORDER
 from .string_table import StringTable
+
+
+DEFAULT_RESOURCE_NAME = "___Default___"
 
 
 @dataclass
@@ -67,6 +71,9 @@ class ModelObjectOutputInfo:
 
     norms_off: int = 0
     norms: list = field(default_factory=list)
+
+    colours_off: int = 0
+    colours: list = field(default_factory=list)
 
     texcoords_off: int = 0
     texcoords: list = field(default_factory=list)
@@ -145,14 +152,14 @@ def collect_materials(scene: bpy.types.Scene, info: ModelsOutputInfo, string_tab
                         tex_name = layer.texture.name
                         model_info.texs[tex_name].use_count += 1
                     else:
-                        tex_name = "___Default___"
+                        tex_name = DEFAULT_RESOURCE_NAME
                     mat_info.layer_name_offs.append(string_table[tex_name])
 
                 if len(model_info.shaders) > 0:
                     shader_name = scene.mkwctt_model_shaders[model_settings.shader_index].name
                     model_info.shaders[shader_name].use_count += 1
                 else:
-                    shader_name = "___Default___"
+                    shader_name = DEFAULT_RESOURCE_NAME
                 mat_info.shader_name_off = string_table[shader_name]
 
 def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, string_table: StringTable):
@@ -182,16 +189,25 @@ def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, st
         vset = set()
         nset = set()
         for vert in mesh.vertices:
-            vset.add(vert.co.copy().freeze())
-            nset.add(vert.normal.copy().freeze())
+            vset.add(Vector(vert.co).freeze())
+            nset.add(Vector(vert.normal).freeze())
 
         obj_info.verts = list(vset)
         obj_info.norms = list(nset)
 
+        for colour_layer in mesh.vertex_colors:
+            cset = set()
+            for colour in colour_layer.data:
+                cset.add(Vector(colour.color).freeze())
+
+            obj_info.colours.append(list(cset))
+            if len(obj_info.colours) == 2:
+                break  # mdl0 support up to 2 vertex colour layers per object
+
         for uv_layer in mesh.uv_layers:
             uvset = set()
             for uv in uv_layer.data:
-                uvset.add(uv.uv.copy().freeze())
+                uvset.add(Vector(uv.uv).freeze())
 
             obj_info.texcoords.append(list(uvset))
             if len(obj_info.texcoords) == 8:
@@ -211,11 +227,11 @@ def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, st
         else:
             part_info = ModelPartOutputInfo()
             part_info.name_off = string_table[obj.name]
-            part_info.mat_name_off = string_table["___Default___"]
+            part_info.mat_name_off = string_table[DEFAULT_RESOURCE_NAME]
             part_info.size = 0x0C
             obj_info.parts[0] = part_info
 
-        idx_size = 0x04 + len(obj_info.texcoords) * 0x02
+        idx_size = 0x04 + len(obj_info.colours) * 0x02 + len(obj_info.texcoords) * 0x02
 
         mesh.calc_loop_triangles()
         for tri in mesh.loop_triangles:
@@ -225,11 +241,13 @@ def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, st
             part_info = obj_info.parts[tri.material_index]
             for vert, loop in zip(reversed(tri.vertices), reversed(tri.loops)):  # blender draws ccw while wii draws cw
                 idx = [
-                    obj_info.verts.index(mesh.vertices[vert].co),
-                    obj_info.norms.index(mesh.vertices[vert].normal),
+                    obj_info.verts.index(Vector(mesh.vertices[vert].co)),
+                    obj_info.norms.index(Vector(mesh.vertices[vert].normal)),
                 ]
+                for layer_idx, layer in enumerate(obj_info.colours):
+                    idx.append(layer.index(Vector(mesh.vertex_colors[layer_idx].data[loop].color)))
                 for layer_idx, layer in enumerate(obj_info.texcoords):
-                    idx.append(layer.index(mesh.uv_layers[layer_idx].data[loop].uv))
+                    idx.append(layer.index(Vector(mesh.uv_layers[layer_idx].data[loop].uv)))
                 part_info.inds.append(idx)
 
             part_info.size += idx_size * 3
@@ -241,13 +259,18 @@ def collect_objects(collection: bpy.types.Collection, info: ModelsOutputInfo, st
         if len(obj_info.parts) == 0:
             continue
 
-        obj_info.size = 0x38
+        obj_info.size = 0x3C
 
         obj_info.verts_off = obj_info.size
         obj_info.size += 0x04 + len(obj_info.verts) * 0x0C
 
         obj_info.norms_off = obj_info.size
         obj_info.size += 0x04 + len(obj_info.norms) * 0x0C
+
+        obj_info.colours_off = obj_info.size
+        obj_info.size += 0x04
+        for colour_layer in obj_info.colours:
+            obj_info.size += 0x04 + len(colour_layer) * 0x04
 
         obj_info.texcoords_off = obj_info.size
         obj_info.size += 0x04
@@ -273,8 +296,14 @@ def drop_unused_assets(model_info: ModelOutputInfo, string_table: StringTable):
         mat = model_info.mats[mat_name]
         if mat.use_count == 0:
             for name_off in mat.layer_name_offs:
-                model_info.texs[string_table[name_off]].use_count -= 1
-            model_info.shaders[string_table[mat.shader_name_off]].use_count -= 1
+                tex_name = string_table[name_off]
+                if tex_name != DEFAULT_RESOURCE_NAME:
+                    model_info.texs[string_table[name_off]].use_count -= 1
+
+            shader_name = string_table[mat.shader_name_off]
+            if shader_name != DEFAULT_RESOURCE_NAME:
+                model_info.shaders[string_table[mat.shader_name_off]].use_count -= 1
+
             del model_info.mats[mat_name]
 
     for shader_name in list(model_info.shaders.keys()):
@@ -390,7 +419,7 @@ def write_material(mat_info: ModelMaterialOutputInfo, out: Buffer):
     out.put32(mat_info.shader_name_off)
 
     for comp in model_settings.colour:
-        out.put8(int(comp * 0xFF))
+        out.put8(int(comp * 0xFF) & 0xFF)
     out.put8(0xFF)  # padding (alpha/unused)
 
     out.put32(len(model_settings.layers))
@@ -406,6 +435,12 @@ def write_v3f_array(data, scale, out: Buffer):
     out.put32(len(data))
     for vec in data:
         out.putv(vec * scale, order=V3F_ORDER)
+
+def write_colour_array(data, out: Buffer):
+    out.put32(len(data))
+    for vec in data:
+        for comp in vec:
+            out.put8(int(comp * 0xFF) & 0xFF)
 
 def write_uv_array(data, out: Buffer):
     out.put32(len(data))
@@ -430,6 +465,7 @@ def write_object(obj_info: ModelObjectOutputInfo, scale, out: Buffer):
     out.put32(obj_info.name_off)
     out.put32(obj_info.verts_off)
     out.put32(obj_info.norms_off)
+    out.put32(obj_info.colours_off)
     out.put32(obj_info.texcoords_off)
     out.put32(obj_info.parts_off)
 
@@ -439,6 +475,11 @@ def write_object(obj_info: ModelObjectOutputInfo, scale, out: Buffer):
 
     write_v3f_array(obj_info.verts, scale, out.slice(off=obj_info.verts_off))
     write_v3f_array(obj_info.norms, 1., out.slice(off=obj_info.norms_off))
+
+    out.pos = obj_info.colours_off
+    out.put32(len(obj_info.colours))
+    for colour_layer in obj_info.colours:
+        write_colour_array(colour_layer, out)
 
     out.pos = obj_info.texcoords_off
     out.put32(len(obj_info.texcoords))
