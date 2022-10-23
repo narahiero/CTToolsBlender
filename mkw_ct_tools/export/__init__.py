@@ -9,7 +9,6 @@ if 'bpy' in locals():
     importlib.reload(model)
     importlib.reload(string_table)
     importlib.reload(track_info)
-    importlib.reload(utils)
 
 else:
     from . import buffer
@@ -19,7 +18,6 @@ else:
     from . import model
     from . import string_table
     from . import track_info
-    from . import utils
 
 
 from .error import ExportError

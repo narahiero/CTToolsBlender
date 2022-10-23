@@ -4,7 +4,7 @@ import bpy
 from .export import ExportError, export_manager
 
 
-class SCENE_PG_mkwctt_export_info(bpy.types.PropertyGroup):
+class SCENE_PG_mkwctt_export_settings(bpy.types.PropertyGroup):
     scale: bpy.props.FloatProperty(
         name="Track Scale",
         description="The factor to multiply vertex coordinates by",
@@ -32,14 +32,14 @@ class SCENE_OT_mkwctt_export(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class SCENE_PT_mkwctt_export_info(bpy.types.Panel):
+class SCENE_PT_mkwctt_export_settings(bpy.types.Panel):
     bl_label = "MKW CT Tools: Export"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "scene"
 
     def draw(self, context):
-        export_info = context.scene.mkwctt_export_info
+        export_settings = context.scene.mkwctt_export_settings
 
         layout = self.layout
         layout.use_property_split = True
@@ -50,4 +50,4 @@ class SCENE_PT_mkwctt_export_info(bpy.types.Panel):
         layout.separator(factor=2.)
 
         layout.label(text="Settings", icon='PREFERENCES')
-        layout.prop(export_info, 'scale')
+        layout.prop(export_settings, 'scale')

@@ -15,7 +15,8 @@ if 'bpy' in locals():
     importlib.reload(collection_settings)
     importlib.reload(collision_settings)
     importlib.reload(export)
-    importlib.reload(export_info)
+    importlib.reload(export_settings)
+    importlib.reload(node_manager)
     importlib.reload(model_settings)
     importlib.reload(track_info)
     importlib.reload(utils)
@@ -24,7 +25,8 @@ else:
     from . import collection_settings
     from . import collision_settings
     from . import export
-    from . import export_info
+    from . import export_settings
+    from . import node_manager
     from . import model_settings
     from . import track_info
     from . import utils
@@ -34,9 +36,9 @@ import bpy
 
 
 classes = (
-    export_info.SCENE_PG_mkwctt_export_info,
-    export_info.SCENE_OT_mkwctt_export,
-    export_info.SCENE_PT_mkwctt_export_info,
+    export_settings.SCENE_PG_mkwctt_export_settings,
+    export_settings.SCENE_OT_mkwctt_export,
+    export_settings.SCENE_PT_mkwctt_export_settings,
 
     track_info.SCENE_PG_mkwctt_race_settings,
     track_info.SCENE_PT_mkwctt_race_settings,
@@ -48,6 +50,8 @@ classes = (
     model_settings.OBJECT_PT_mkwctt_model_settings,
     model_settings.SCENE_PG_mkwctt_model_shader_stage,
     model_settings.SCENE_PG_mkwctt_model_shader,
+    model_settings.SCENE_PG_mkwctt_model_settings,
+    model_settings.NODETREE_PG_mkwctt_model_settings,
     model_settings.MATERIAL_PG_mkwctt_model_settings_layer,
     model_settings.MATERIAL_PG_mkwctt_model_settings,
     model_settings.MATERIAL_OT_mkwctt_model_settings_layers_action,
@@ -78,12 +82,14 @@ def register():
     bpy.types.Material.mkwctt_collision_settings = bpy.props.PointerProperty(type=collision_settings.MATERIAL_PG_mkwctt_collision_settings)
     bpy.types.Material.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.MATERIAL_PG_mkwctt_model_settings)
 
+    bpy.types.NodeTree.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.NODETREE_PG_mkwctt_model_settings)
+
     bpy.types.Object.mkwctt_collision_settings = bpy.props.PointerProperty(type=collision_settings.OBJECT_PG_mkwctt_collision_settings)
     bpy.types.Object.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.OBJECT_PG_mkwctt_model_settings)
 
-    bpy.types.Scene.mkwctt_export_info = bpy.props.PointerProperty(type=export_info.SCENE_PG_mkwctt_export_info)
+    bpy.types.Scene.mkwctt_export_settings = bpy.props.PointerProperty(type=export_settings.SCENE_PG_mkwctt_export_settings)
     bpy.types.Scene.mkwctt_race_settings = bpy.props.PointerProperty(type=track_info.SCENE_PG_mkwctt_race_settings)
-    bpy.types.Scene.mkwctt_model_shaders = bpy.props.CollectionProperty(type=model_settings.SCENE_PG_mkwctt_model_shader)
+    bpy.types.Scene.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.SCENE_PG_mkwctt_model_settings)
 
     bpy.types.Texture.mkwctt_model_settings = bpy.props.PointerProperty(type=model_settings.TEXTURE_PG_mkwctt_model_settings)
 

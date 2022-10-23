@@ -7,7 +7,7 @@ import bpy
 from . import collision
 from . import model
 from . import track_info
-from . import utils
+from .. import utils
 from .buffer import Buffer
 from .error import ExportError
 from .string_table import StringTable

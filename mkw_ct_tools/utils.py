@@ -19,3 +19,8 @@ def unique_name(coll, name: str):
                 break
 
     return name
+
+
+def get_enum_number(data, prop) -> int:
+    prop_rna = data.bl_rna.properties[prop]
+    return data.get(prop, prop_rna.enum_items[prop_rna.default].value)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import bpy
 from mathutils import Vector
 
-from . import utils
+from .. import utils
 from .buffer import Buffer, V3F_ORDER
 
 
@@ -18,7 +18,7 @@ def get_output_info(context):
 
 
 def export_track_info(context, out: Buffer):
-    export_info = context.scene.mkwctt_export_info
+    export_settings = context.scene.mkwctt_export_settings
     race_settings = context.scene.mkwctt_race_settings
 
     out.put8(utils.get_enum_number(race_settings, 'track_slot'))
@@ -32,7 +32,7 @@ def export_track_info(context, out: Buffer):
         start_pos = Vector((0, 0, 0))
         start_rot = Vector((0, 0, 0))
     else:
-        start_pos = start_point.location * export_info.scale
+        start_pos = start_point.location * export_settings.scale
         start_rot = start_point.rotation_euler
 
     out.putv(start_pos, order=V3F_ORDER)

@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 import bpy
 
-from . import utils
+from .. import utils
 from .buffer import Buffer, V3F_ORDER
 
 
@@ -68,7 +68,7 @@ def collect_objects(collection: bpy.types.Collection, scale, info: CollisionOutp
 def get_output_info(context):
     info = CollisionOutputInfo()
 
-    collect_objects(context.scene.collection, context.scene.mkwctt_export_info.scale, info)
+    collect_objects(context.scene.collection, context.scene.mkwctt_export_settings.scale, info)
     info.size = 0x04 + info.face_count * 0x26
 
     return info
